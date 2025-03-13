@@ -1,12 +1,13 @@
 from pyspark.sql import SparkSession
 from pyspark.sql.functions import *
+import os
 
 spark = SparkSession.builder \
     .appName("CSV loader") \
     .config("spark.sql.shuffle.partitions","16") \
     .getOrCreate()
 
-data_path = "data/aisdk-2025-02-26.csv"
+data_path = "data/aisdk-2025-02-03.csv"
 
 df = spark.read \
     .option("header", "true") \
@@ -17,18 +18,19 @@ def filter_mmsi(mmsi):
     df_filtered = df.filter(df['MMSI'] == mmsi)
     df_filtered.show()
 
-# filter_mmsi(219013885)
+
 
 def uniques_in_col(col):
     unique_values = [row[col] for row in df.select(col).distinct().collect()]
     print(f"Unique values in column '{col}': {unique_values}")
+
 
 def filter_and_unique(col, mmsi):
     df_filtered = df.filter(df['MMSI'] == mmsi)
     unique_values = [row[col] for row in df_filtered .select(col).distinct().collect()]
     print(f"Unique values in column '{col}': {unique_values}")
 
-# filter_and_unique('Ship Type',636022800)
+filter_and_unique('Ship Type',219005954)
 def fill_undefined_ship_type(df):
     '''
     Uses PySpark to find the Ship Type and fill in the 'Undefined' rows for each MMSI number.
@@ -54,10 +56,20 @@ def fill_undefined_ship_type(df):
     )
     df_filled.show()
 
+def check_vessel_class(df):
+    fishing_df = df.filter(col('Ship Type') == 'Fishing')
+    fishing_df.select('Type of mobile').distinct().show()
+    fishing_df.groupby('Type of mobile').count().show()
+
+def extract_fishing_vessels(df):
+    df_filtered = df.filter(col('Ship Type') == 'Fishing')
+    os.makedirs("data/fishing_vessel_data", exist_ok=True)
+    new_file_name = data_path.replace(".csv", "fish.csv")
+    df_filtered.write.csv(f"data/fishing_vessel_data/{new_file_name}",)
 
 
-fill_undefined_ship_type(df)
+# fill_undefined_ship_type(df)
 
+# check_vessel_class(df)
 
-
-# df.show(50)
+# extract_fishing_vessels(df)
