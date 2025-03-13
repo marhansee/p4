@@ -2,6 +2,8 @@ from pyspark.sql import SparkSession
 from pyspark.sql.functions import *
 import os
 
+def count_rows(df):
+    print(f"Rows in dataframe: {df.count()}")
 
 def filter_and_unique(col, mmsi):
     """
@@ -99,10 +101,12 @@ if __name__ == '__main__':
         .getOrCreate()
 
     # Set the data path (ensure the path is correct relative to the project root)
-    data_path = "data/aisdk-2025-02-03.csv"
+    data_path = "data/aisdk-2025-01-01.csv"
 
     # Load the CSV file into a DataFrame
     df = spark.read \
         .option("header", "true") \
         .option("inferSchema", "true") \
         .csv(data_path)
+
+    count_rows(df)
