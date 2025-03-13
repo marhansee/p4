@@ -5,7 +5,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" /><meta name="generator" content="Docutils 0.18.1: http://docutils.sourceforge.net/" />
 
-    <title>My Project Modules &#8212; p4 2025 documentation</title>
+    <title>Project Modules &#8212; p4 2025 documentation</title>
     <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=61cd365c" />
     <link rel="stylesheet" type="text/css" href="_static/alabaster.css?v=12dfc556" />
     <script src="_static/documentation_options.js?v=cb975c41"></script>
@@ -13,6 +13,7 @@
     <script src="_static/sphinx_highlight.js?v=dc90522c"></script>
     <link rel="index" title="Index" href="genindex.html" />
     <link rel="search" title="Search" href="search.html" />
+    <link rel="prev" title="Welcome to My Project’s Documentation!" href="index.html" />
    
   <link rel="stylesheet" href="_static/custom.css" type="text/css" />
   
@@ -30,9 +31,104 @@
 
           <div class="body" role="main">
             
-  <section id="my-project-modules">
-<h1>My Project Modules<a class="headerlink" href="#my-project-modules" title="Link to this heading">¶</a></h1>
-<p>Here you’ll find the auto-generated API documentation.</p>
+  <section id="project-modules">
+<h1>Project Modules<a class="headerlink" href="#project-modules" title="Link to this heading">¶</a></h1>
+<section id="module-main">
+<span id="main-module"></span><h2>Main Module<a class="headerlink" href="#module-main" title="Link to this heading">¶</a></h2>
+<dl class="py function">
+<dt class="sig sig-object py" id="main.greet">
+<span class="sig-prename descclassname"><span class="pre">main.</span></span><span class="sig-name descname"><span class="pre">greet</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">name</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#main.greet" title="Link to this definition">¶</a></dt>
+<dd><p>Greet the user by name.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>name</strong> (<em>str</em>) – The name of the user.</p>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>A greeting message.</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>str</p>
+</dd>
+</dl>
+</dd></dl>
+
+</section>
+<section id="module-eda">
+<span id="exploratory-data-analysis"></span><h2>Exploratory Data Analysis<a class="headerlink" href="#module-eda" title="Link to this heading">¶</a></h2>
+<dl class="py function">
+<dt class="sig sig-object py" id="eda.check_vessel_class">
+<span class="sig-prename descclassname"><span class="pre">eda.</span></span><span class="sig-name descname"><span class="pre">check_vessel_class</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">df</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#eda.check_vessel_class" title="Link to this definition">¶</a></dt>
+<dd><p>Identifies and processes vessel classes specific to fishing vessels.
+Filters for rows where the ‘Ship Type’ is categorized as ‘Fishing’, extracts
+distinct values from the ‘Type of mobile’ field, and displays the aggregated count of these
+distinct types.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>df</strong> – pyspark.sql.DataFrame
+A DataFrame containing vessel information, which must include the columns
+‘Ship Type’ and ‘Type of mobile’.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="eda.extract_fishing_vessels">
+<span class="sig-prename descclassname"><span class="pre">eda.</span></span><span class="sig-name descname"><span class="pre">extract_fishing_vessels</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">df</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#eda.extract_fishing_vessels" title="Link to this definition">¶</a></dt>
+<dd><p>Filters a DataFrame for rows where the “Ship Type” column equals “Fishing”, and
+saves the filtered data to a new CSV file in a specified directory. The function
+ensures the target directory exists before writing the CSV file.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>df</strong> – The input DataFrame containing ship data, with a column named “Ship Type”.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="eda.fill_undefined_ship_type">
+<span class="sig-prename descclassname"><span class="pre">eda.</span></span><span class="sig-name descname"><span class="pre">fill_undefined_ship_type</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">df</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#eda.fill_undefined_ship_type" title="Link to this definition">¶</a></dt>
+<dd><p>Fills undefined ship types in the given DataFrame by determining the appropriate ship type
+based on existing non-‘Undefined’ ship type values for the same MMSI.
+This function creates a temporary filled ship type column and then substitutes undefined values
+in ‘Ship Type’ with the determined values while preserving the original DataFrame structure.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>df</strong> (<em>pyspark.sql.DataFrame</em>) – Input DataFrame that contains a column ‘Ship Type’ for ship type
+and a column ‘MMSI’ for the unique ship identifier.</p>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p><dl class="simple">
+<dt>A DataFrame where ‘Ship Type’ column values equal to ‘Undefined’</dt><dd><p>have been updated based on other non-‘Undefined’ values grouped by the corresponding MMSI.</p>
+</dd>
+</dl>
+</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>pyspark.sql.DataFrame</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="eda.filter_and_unique">
+<span class="sig-prename descclassname"><span class="pre">eda.</span></span><span class="sig-name descname"><span class="pre">filter_and_unique</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">col</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">mmsi</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#eda.filter_and_unique" title="Link to this definition">¶</a></dt>
+<dd><p>Filters a DataFrame based on a specific ‘MMSI’ value and retrieves unique
+values from a specified column in the filtered DataFrame. The function
+also prints the unique values and displays the filtered DataFrame.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>col</strong> – The name of the column to retrieve unique values from.</p></li>
+<li><p><strong>mmsi</strong> – The value to filter the ‘MMSI’ column of the DataFrame.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>None</p>
+</dd>
+</dl>
+</dd></dl>
+
+</section>
 </section>
 
 
@@ -52,11 +148,20 @@
 
 
 <h3>Navigation</h3>
+<p class="caption" role="heading"><span class="caption-text">Contents:</span></p>
+<ul class="current">
+<li class="toctree-l1 current"><a class="current reference internal" href="#">Project Modules</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="#module-main">Main Module</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#module-eda">Exploratory Data Analysis</a></li>
+</ul>
+</li>
+</ul>
 
 <div class="relations">
 <h3>Related Topics</h3>
 <ul>
   <li><a href="index.html">Documentation overview</a><ul>
+      <li>Previous: <a href="index.html" title="previous chapter">Welcome to My Project’s Documentation!</a></li>
   </ul></li>
 </ul>
 </div>
