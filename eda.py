@@ -1,6 +1,6 @@
 from pyspark.sql import SparkSession
 from pyspark.sql.functions import *
-import os
+
 
 def count_rows(df):
     print(f"Rows in dataframe: {df.count()}")
@@ -73,26 +73,6 @@ def check_vessel_class(df):
     fishing_df.groupby('Type of mobile').count().show()
 
 
-def extract_fishing_vessels(df):
-    """
-    Filters a DataFrame for rows where the "Ship Type" column equals "Fishing", and
-    saves the filtered data to a new CSV file in a specified directory. The function
-    ensures the target directory exists before writing the CSV file.
-
-    Args:
-        df: The input DataFrame containing ship data, with a column named "Ship Type".
-
-    """
-    df_filtered = df.filter(col('Ship Type') == 'Fishing')
-
-    # Create data directory if it does not exist
-    os.makedirs("data/fishing_vessel_data", exist_ok=True)
-    new_file_name = data_path.replace(".csv", "fish.csv")
-
-    # Writes filtered df as csv with new file name
-    df_filtered.write.csv(f"data/fishing_vessel_data/{new_file_name}",)
-
-
 if __name__ == '__main__':
     # Initialize the Spark session
     spark = SparkSession.builder \
@@ -101,7 +81,7 @@ if __name__ == '__main__':
         .getOrCreate()
 
     # Set the data path (ensure the path is correct relative to the project root)
-    data_path = "data/aisdk-2025-01-01.csv"
+    data_path = ("data/aisdk-2025-01-01.csv")
 
     # Load the CSV file into a DataFrame
     df = spark.read \
@@ -109,4 +89,3 @@ if __name__ == '__main__':
         .option("inferSchema", "true") \
         .csv(data_path)
 
-    count_rows(df)

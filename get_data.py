@@ -2,6 +2,7 @@ import datetime
 import os
 import requests
 import zipfile
+from pyspark.sql.functions import *
 
 def get_data():
     """
@@ -67,5 +68,6 @@ def get_data():
 
         # Move to the next date
         current_date += datetime.timedelta(days=1)
+
 
 get_data()
