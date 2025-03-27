@@ -1,23 +1,4 @@
 import os
-<<<<<<< HEAD
-from pyspark.sql.functions import *
-from pyspark.sql import SparkSession
-import glob
-import shutil
-
-
-def extract_fishing_vessels(input_dir="data", output_dir="data/fishing_vessel_data"):
-    """
-    Extracts fishing vessels from all CSV files in the input directory
-    and saves each as a new CSV in the output directory.
-
-    Args:
-        input_dir: Directory containing CSV files with vessel data
-        output_dir: Directory to save the filtered CSV files
-
-    Returns:
-        List of output file paths created
-=======
 import glob
 import shutil
 from pyspark.sql import SparkSession
@@ -81,22 +62,15 @@ def process_fishing_vessels_with_meta(input_dir="data",
 
     Returns:
         List[str]: List of output file paths created.
->>>>>>> main
     """
     # Create output directory if it doesn't exist
     os.makedirs(output_dir, exist_ok=True)
 
-<<<<<<< HEAD
-    # Find all CSV files in the input directory
-    csv_files = glob.glob(os.path.join(input_dir, "*.csv"))
-
-=======
     # Load meta data once
     meta_data = spark.read.csv(meta_data_path, header=True, inferSchema=True)
 
     # Find all CSV files in the input directory
     csv_files = glob.glob(os.path.join(input_dir, "*.csv"))
->>>>>>> main
     if not csv_files:
         print(f"No CSV files found in {input_dir}")
         return []
@@ -110,24 +84,6 @@ def process_fishing_vessels_with_meta(input_dir="data",
         # Read the CSV file
         df = spark.read.csv(data_path, header=True, inferSchema=True)
 
-<<<<<<< HEAD
-        # Filter for fishing vessels
-        df_filtered = df.filter(col('Ship Type') == 'Fishing')
-
-        # Create output filename based on input file
-        base_filename = os.path.basename(data_path)
-        new_file_name = base_filename.replace(".csv", "_fishing.csv")
-        output_path = os.path.join(output_dir, new_file_name)
-
-        # Create a temporary directory for the output
-        temp_dir = output_path + "_temp"
-
-        # Use coalesce(1) to ensure a single file output and write with header
-        (df_filtered.coalesce(1).write.option("header", "true")
-         .mode("overwrite").csv(temp_dir))
-
-        # Find the CSV file in the temp directory (should be only one)
-=======
         # Step 1: Filter for fishing vessels
         df_filtered = df.filter(col("Ship Type") == "Fishing")
 
@@ -153,7 +109,6 @@ def process_fishing_vessels_with_meta(input_dir="data",
          .csv(temp_dir))
 
         # Find the CSV file in the temporary directory (should be only one)
->>>>>>> main
         csv_file = glob.glob(os.path.join(temp_dir, "*.csv"))[0]
 
         # Move the file to the desired output path
@@ -162,15 +117,8 @@ def process_fishing_vessels_with_meta(input_dir="data",
         # Remove the temporary directory
         shutil.rmtree(temp_dir)
 
-<<<<<<< HEAD
-        # Count the number of rows in the filtered DataFrame
-        count = df_filtered.count()
-
-        print(f"Saved {count} fishing vessels to {output_path}")
-=======
         count = df_labeled.count()
         print(f"Saved {count} records to {output_path}")
->>>>>>> main
         output_files.append(output_path)
 
     return output_files
@@ -179,20 +127,6 @@ def process_fishing_vessels_with_meta(input_dir="data",
 if __name__ == '__main__':
     # Initialize the Spark session
     spark = SparkSession.builder \
-<<<<<<< HEAD
-        .appName("Fishing vessel data loader") \
-        .config("spark.sql.shuffle.partitions", "200") \
-        .getOrCreate()
-
-    # Set the directories
-    input_dir = "data"
-    output_dir = "data/fishing_vessel_data"
-
-    # Call the function with input and output directories
-    output_files = extract_fishing_vessels(input_dir, output_dir)
-
-    print(f"Completed processing {len(output_files)} files")
-=======
         .appName("Fishing Vessel Data Processor") \
         .config("spark.sql.shuffle.partitions", "200") \
         .getOrCreate()
@@ -200,7 +134,7 @@ if __name__ == '__main__':
     # Set directories and meta data path (update paths as necessary)
     input_dir = "data"
     output_dir = "data/fishing_vessel_data"
-    meta_data_path = "data//meta_data/meta_data.csv"
+    meta_data_path = "data/meta_data.csv"
 
     # Process the AIS files: filter, join meta data, and label data
     output_files = process_fishing_vessels_with_meta(input_dir, output_dir, meta_data_path)
@@ -209,4 +143,3 @@ if __name__ == '__main__':
 
     # Stop the Spark session when done
     spark.stop()
->>>>>>> main
