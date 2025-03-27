@@ -134,7 +134,7 @@ if __name__ == '__main__':
     # Set directories and meta data path (update paths as necessary)
     input_dir = "data"
     output_dir = "data/fishing_vessel_data"
-    meta_data_path = "data/meta_data.csv"
+    meta_data_path = "data/metadata/meta_data.csv"
 
     # Process the AIS files: filter, join meta data, and label data
     output_files = process_fishing_vessels_with_meta(input_dir, output_dir, meta_data_path)
