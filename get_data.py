@@ -2,7 +2,7 @@ import datetime
 import os
 import requests
 import zipfile
-from pyspark.sql.functions import *
+
 
 def get_data():
     """
