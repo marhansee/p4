@@ -1,0 +1,5 @@
+[core]
+    autostage = true
+    remote = myremote
+['remote "myremote"']
+    url = ssh://marhanse@172.17.191.79:/home/marhanse/p4/data
