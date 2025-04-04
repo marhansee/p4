@@ -4,6 +4,6 @@ import os
 
 spark = SparkSession.builder.appName("eda_ais").getOrCreate()
 
-df = spark.read.option("header",True).csv("/ceph/project/gatehousep4/data")
+df = spark.read.option("header",True).csv("data")
 
-df.show()
+df.describe().show()
