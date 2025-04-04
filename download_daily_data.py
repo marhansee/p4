@@ -13,7 +13,7 @@ def download_daily_data():
     date = (datetime.today() - timedelta(days=3)).strftime('%Y-%m-%d')
 
     # Destination folder for AIS data
-    data_destination = "data"
+    data_destination = "data/raw_data"
     os.makedirs(data_destination, exist_ok=True)
 
 
