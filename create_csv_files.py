@@ -45,8 +45,8 @@ def label_data(df, target_name="trawling"):
     return df
 
 
-def process_fishing_vessels_with_meta(input_dir="data",
-                                      output_dir="data/fishing_vessel_data",
+def process_fishing_vessels_with_meta(input_dir="data/raw_data",
+                                      output_dir="data",
                                       meta_data_path="data/meta_data.csv"):
     """
     Processes AIS data by:
@@ -143,3 +143,4 @@ if __name__ == '__main__':
 
     # Stop the Spark session when done
     spark.stop()
+
