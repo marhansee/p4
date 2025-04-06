@@ -37,7 +37,6 @@ q1, med, q3 = df_filtered.approxQuantile(column_to_plot, [0.25, 0.5, 0.75], 0.01
 print(f"Min: {min_val}, Q1: {q1}, Median: {med}, Q3: {q3}, Max: {max_val}")
 
 # Now manually create a boxplot using the computed statistics
-# (For simplicity, we'll create a horizontal boxplot)
 
 fig, ax = plt.subplots(figsize=(8, 2))  # A narrow height for a single box
 
