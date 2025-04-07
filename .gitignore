@@ -3,3 +3,4 @@ __pycache__/
 p4cont.def
 p4cont.sif
 *.png
+/boxplots
