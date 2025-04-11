@@ -31,7 +31,7 @@ df_filtered = df.filter((col("Timestamp") >= start_date) & (col("Timestamp") < e
 
 columns_to_plot = ["Longitude", "Latitude","ROT","SOG","COG","Heading","Width","Length","Draught"]
 for col in columns_to_plot:
-    data = df_filtered.select(f"{col}").rdd.flatMap(lambda x: x).collect()
+    data = df_filtered.select(f"{col}").dropna().rdd.flatMap(lambda x: x).collect()
     plt.hist(data, bins=20)
     plt.xlabel(f'{col}')
     plt.ylabel('Frequency')
