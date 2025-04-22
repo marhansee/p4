@@ -2,13 +2,14 @@ import pyspark
 from pyspark.sql import SparkSession, DataFrame
 import logging
 import findspark
-from pyspark.sql.functions import to_timestamp, col, count, when, isnan
+from pyspark.sql.functions import to_timestamp, col, count, when, isnan, lag
 import random
 import sys
+from tempo.tsdf import TSDF
 
 from pyspark.sql import functions as F
 from pyspark.sql.window import Window
-from pyspark.sql.types import IntegerType
+from pyspark.sql.types import IntegerType, NumericType, TimestampType
 
 logging.getLogger("py4j").setLevel(logging.ERROR)
 findspark.init()
@@ -116,12 +117,12 @@ def define_forecasting_target(df, max_time_gap=3600, forecast_steps=20):
     considering a new trajectory if the time difference is more than the given time_gap (in seconds).
     
     Args:
-    df: PySpark DataFrame with columns ['MMSI', 'Timestamp', 'Latitude', 'Longitude'].
-    max_time_gap: Time difference (in seconds) to consider a new trajectory.
-    forecast_steps: Number of steps ahead to forecast (e.g., 20).
+        df: PySpark DataFrame with columns ['MMSI', 'Timestamp', 'Latitude', 'Longitude'].
+        max_time_gap: Time difference (in seconds) to consider a new trajectory.
+        forecast_steps: Number of steps ahead to forecast (e.g., 20).
     
     Returns:
-    df: DataFrame with target columns for the forecaster.
+        df: DataFrame with target columns for the forecaster.
     """
         
     # Sort the DataFrame by MMSI and Timestamp
@@ -158,12 +159,12 @@ def drop_vessels_with_all_nulls(df, id_col, timestamp_col, debug_examples=False)
     Now includes debug output showing removed vessels and their NULL columns.
 
     Args:
-    df            : Input Spark DataFrame
-    id_col        : Column name used to identify each vessel (e.g., 'MMSI')
-    timestamp_col : Column name with timestamp data (e.g., 'Timestamp')
+        df: Input Spark DataFrame
+        id_col: Column name used to identify each vessel (e.g., 'MMSI')
+        timestamp_col: Column name with timestamp data (e.g., 'Timestamp')
 
     Returns:
-    Spark DataFrame with vessels dropped for days where at least one column had all NULL values.
+        Spark DataFrame with vessels dropped for days where at least one column had all NULL values.
     """
     # Extract date from timestamp
     df_with_date = df.withColumn("date", F.to_date(F.col(timestamp_col)))
@@ -248,7 +249,7 @@ def print_missing_value_count(df):
     df.select([count(when(isnan(c) | col(c).isNull(), c)).alias(c) for c in df.columns]
     ).show()
 
-def fill_linear_interpolation(df,id_cols,order_col,value_col):
+def fill_linear_interpolation(df,id_cols,order_col, value_cols, partitions=200):
     """ 
     Apply linear interpolation to dataframe to fill gaps. 
 
@@ -256,53 +257,201 @@ def fill_linear_interpolation(df,id_cols,order_col,value_col):
     SOURCE: https://stackoverflow.com/questions/53077639/pyspark-interpolation-of-missing-values-in-pyspark-dataframe-observed
 
     Args:
-    df: spark dataframe
-    id_cols: string or list of column names to partition by the window function 
-    order_col: column to use to order by the window function
-    value_col: column to be filled
+        df: spark dataframe
+        id_cols: string or list of column names to partition by the window function 
+        order_col: column to use to order by the window function
+        value_col: column to be filled
 
-    :returns: spark dataframe updated with interpolated values
+    Returns: 
+        spark dataframe updated with interpolated values
     """
     new_df = df
+
+    new_df = new_df.repartition(partitions, *id_cols)
 
     # Make sure id_cols is a list
     if not isinstance(id_cols, list):
         id_cols = [id_cols]
 
-    # create row number over window and a column with row number only for non missing values
-    w = Window.partitionBy(id_cols).orderBy(order_col)
-    new_df = new_df.withColumn('rn',F.row_number().over(w))
-    new_df = new_df.withColumn('rn_not_null',F.when(F.col(value_col).isNotNull(),F.col('rn')))
+    for value_col in value_cols:
+        w = Window.partitionBy(id_cols).orderBy(order_col)
+        new_df = new_df.withColumn('rn',F.row_number().over(w))
+        new_df = new_df.withColumn('rn_not_null',F.when(F.col(value_col).isNotNull(),F.col('rn')))
 
-    # create relative references to the start value (last value not missing)
-    w_start = Window.partitionBy(id_cols).orderBy(order_col).rowsBetween(Window.unboundedPreceding,-1)
-    new_df = new_df.withColumn('start_val',F.last(value_col,True).over(w_start))
-    new_df = new_df.withColumn('start_rn',F.last('rn_not_null',True).over(w_start))
+        # create relative references to the start value (last value not missing)
+        w_start = Window.partitionBy(id_cols).orderBy(order_col).rowsBetween(Window.unboundedPreceding,-1)
+        new_df = new_df.withColumn('start_val',F.last(value_col,True).over(w_start))
+        new_df = new_df.withColumn('start_rn',F.last('rn_not_null',True).over(w_start))
 
-    # create relative references to the end value (first value not missing)
-    w_end = Window.partitionBy(id_cols).orderBy(order_col).rowsBetween(0,Window.unboundedFollowing)
-    new_df = new_df.withColumn('end_val',F.first(value_col,True).over(w_end))
-    new_df = new_df.withColumn('end_rn',F.first('rn_not_null',True).over(w_end))
+        # create relative references to the end value (first value not missing)
+        w_end = Window.partitionBy(id_cols).orderBy(order_col).rowsBetween(0,Window.unboundedFollowing)
+        new_df = new_df.withColumn('end_val',F.first(value_col,True).over(w_end))
+        new_df = new_df.withColumn('end_rn',F.first('rn_not_null',True).over(w_end))
 
-    # create references to gap length and current gap position  
-    new_df = new_df.withColumn('diff_rn',F.col('end_rn')-F.col('start_rn'))
-    new_df = new_df.withColumn('curr_rn',F.col('diff_rn')-(F.col('end_rn')-F.col('rn')))
+        # create references to gap length and current gap position  
+        new_df = new_df.withColumn('diff_rn',F.col('end_rn')-F.col('start_rn'))
+        new_df = new_df.withColumn('curr_rn',F.col('diff_rn')-(F.col('end_rn')-F.col('rn')))
 
-    # calculate linear interpolation value
-    lin_interp_func = (F.col('start_val')+(F.col('end_val')-F.col('start_val'))/F.col('diff_rn')*F.col('curr_rn'))
-    new_df = new_df.withColumn(value_col,F.when(F.col(value_col).isNull(),lin_interp_func).otherwise(F.col(value_col)))
+        # calculate linear interpolation value
+        lin_interp_func = (F.col('start_val')+(F.col('end_val')-F.col('start_val'))/F.col('diff_rn')*F.col('curr_rn'))
+        new_df = new_df.withColumn(value_col,F.when(F.col(value_col).isNull(),lin_interp_func).otherwise(F.col(value_col)))
 
-    # Forward fill remaining NULLs (e.g., at start of each partition)
-    w_ff = w.rowsBetween(Window.unboundedPreceding, 0)
-    new_df = new_df.withColumn(
-        value_col,
-        F.last(value_col, ignorenulls=True).over(w_ff)
-    )
+        # Forward fill remaining NULLs (e.g., at start of each partition)
+        w_ff = Window.partitionBy(id_cols).orderBy(order_col).\
+            rowsBetween(Window.unboundedPreceding, 0)
+        new_df = new_df.withColumn(value_col, F.last(value_col, 
+                                    ignorenulls=True).over(w_ff))
 
-    # Drop intermediate features
-    new_df = new_df.drop('rn', 'rn_not_null', 'start_val', 'end_val', 'start_rn', 'end_rn', 'diff_rn', 'curr_rn')
+        # Backward fill remaining NULLs (e.g., at the end of each partition)
+        w_bf = Window.partitionBy(id_cols).orderBy(order_col).\
+            rowsBetween(0, Window.unboundedFollowing)
+        new_df = new_df.withColumn(value_col, F.first(value_col, 
+                                    ignorenulls=True).over(w_bf))
+
+        # Drop intermediate features
+        new_df = new_df.drop('rn', 'rn_not_null', 'start_val', 'end_val', 
+                            'start_rn', 'end_rn', 'diff_rn', 'curr_rn')
 
     return new_df
+
+
+
+def add_lagged_features(df, id_col, timestamp_col, lat_col, lon_col):
+    """
+    Adds lagged position features and drops rows with NULLs introduced by lagging
+    
+    Args:
+        df: Input DataFrame (should already have NULL position rows removed)
+        id_col: Vessel identifier column (e.g., 'MMSI')
+        timestamp_col: Timestamp column
+        lat_col: Latitude column name
+        lon_col: Longitude column name
+        
+    Returns:
+        DataFrame with lagged features and no NULLs in lagged columns
+    """
+
+    windowSpec = Window.partitionBy(id_col).orderBy(timestamp_col)
+    
+    # Add lagged features (corrected syntax)
+    df_with_lags = (df
+        .withColumn(f'{lat_col}_lag1', F.lag(lat_col, 1).over(windowSpec))
+        .withColumn(f'{lon_col}_lag1', F.lag(lon_col, 1).over(windowSpec))
+        .withColumn(f'{lat_col}_lag5', F.lag(lat_col, 5).over(windowSpec))
+        .withColumn(f'{lon_col}_lag5', F.lag(lon_col, 5).over(windowSpec))
+    )
+
+    # Drop initial rows with NULLs
+    condition = (
+        F.col(f'{lat_col}_lag1').isNull() |
+        F.col(f'{lon_col}_lag1').isNull() |
+        F.col(f'{lat_col}_lag5').isNull() |
+        F.col(f'{lon_col}_lag5').isNull()
+    )
+
+    final_df = df_with_lags.filter(~condition)
+    
+    return final_df
+
+def resampling(df, id_col, timestamp_col, method='resampling'):
+    # Make sure id_cols is a list
+    if not isinstance(id_col, list):
+        id_col = [id_col]
+
+    df = df.orderBy(id_col + [timestamp_col])
+
+    tsdf = TSDF(df, ts_col=timestamp_col, partition_cols=id_col)
+
+    if method == 'resampling':
+        func = 'mean'
+    elif method == 'downsampling':
+        func = 'floor'
+
+    resampled_tsdf = tsdf.resample(freq='min', func=func)
+    
+    df = resampled_tsdf.df
+    df = df.orderBy(id_col + [timestamp_col])
+
+    print("Resampling complete")
+    print(f"DataFrame size after resampling: {df.count()} rows x {len(df.columns)} columns")
+
+    return df
+
+def preprocess_pipeline(df, forecasting=True):
+    # Mandatory preprocessing
+    df = drop_class_B(df)
+
+    features_to_drop = ('Type of mobile','Navigational status','IMO','Callsign',
+                        'Name','Cargo type','Width','Length',
+                        'Type of position fixing device','Destination',
+                        'ETA','Data source type','A','B','C','D','Ship type')
+    df = df.drop(*features_to_drop)
+
+    df = drop_duplicates(df)
+    df.cache()
+    df.count()
+
+    df = drop_unknown_label(df)
+    df.cache()
+    df.count()
+
+    df = drop_vessels_with_all_nulls(
+        df=df,
+        id_col='MMSI',
+        timestamp_col='Timestamp'
+    )
+    df.cache()
+    df.count()
+
+    # Split the data
+    train_df, val_df, test_df = split_data(df, train_size=0.7, test_size=0.15, 
+                                           val_size=0.15, random_state=42)
+
+    # Drop gear type feature
+    train_df = train_df.drop('Gear Type')
+    val_df = val_df.drop('Gear Type')
+    test_df = test_df.drop('Gear Type')
+
+    train_df.cache()
+    train_df.count()
+    val_df.cache()
+    val_df.count()
+    test_df.cache()
+    test_df.count()
+
+    # Apply resampling/downsampling
+    train_df = resampling(df, 'MMSI', 'Timestamp',method='resampling') # Or downsampling
+    val_df = resampling(df, 'MMSI', 'Timestamp',method='resampling')
+    test_df = resampling(df, 'MMSI', 'Timestamp',method='resampling')
+
+    # Impute missing values with linear interpolation
+    value_cols = ['ROT','SOG','COG','Heading']
+    train_df = fill_linear_interpolation(df, 'MMSI','Timestamp', value_cols=value_cols)
+    val_df = fill_linear_interpolation(df, 'MMSI','Timestamp', value_cols=value_cols)
+    test_df = fill_linear_interpolation(df, 'MMSI','Timestamp', value_cols=value_cols)
+    
+    if forecasting:
+        train_df = add_lagged_features(
+            df=train_df,
+            id_col='MMSI',
+            timestamp_col='Timestamp',
+            lat_col='Latitude',
+            lon_col='Longitude'
+        )
+        val_df = add_lagged_features(
+            df=val_df,
+            id_col='MMSI',
+            timestamp_col='Timestamp',
+            lat_col='Latitude',
+            lon_col='Longitude'
+        )
+        test_df = add_lagged_features(
+            df=test_df,
+            id_col='MMSI',
+            timestamp_col='Timestamp',
+            lat_col='Latitude',
+            lon_col='Longitude'
+        )
 
 
 def main():
@@ -317,12 +466,12 @@ def main():
     features_to_drop = ('Type of mobile','Navigational status','IMO','Callsign',
                         'Name','Cargo type','Width','Length',
                         'Type of position fixing device','Destination',
-                        'ETA','Data source type','A','B','C','D')
+                        'ETA','Data source type','A','B','C','D','Ship type')
 
     df = df.drop(*features_to_drop)
 
     # Drop duplicates
-    # df = drop_duplicates(df)
+    df = drop_duplicates(df)
 
     # Drop unknown labels
     df = drop_unknown_label(df)
@@ -333,22 +482,57 @@ def main():
         timestamp_col='Timestamp'
     )
 
+
     # Split the data
     train_df, val_df, test_df = split_data(df, train_size=0.7, test_size=0.15, 
                                            val_size=0.15, random_state=42)
-    # train_df.show(10)
+    
+    train_df = train_df.drop('Gear Type')
+    train_df.cache()
+    train_df.count()
 
-    train_df.show(10, truncate=False)
+    print(f"DataFrame size: {train_df.count()} rows x {len(train_df.columns)} columns")
+
+    print("")
+
+    print("BEFORE RESAMPLING:")
     print_missing_value_count(train_df)
 
-    train_df = fill_linear_interpolation(
+    # train_df.show(20)
+    train_df = resampling(
         df=train_df,
-        id_cols=['MMSI'],
-        order_col='Timestamp',
-        value_col='SOG'
+        id_col='MMSI',
+        timestamp_col='Timestamp'
     )
+    train_df.cache()
+    train_df.count()
+    train_df.show(5)
+    
+    print("AFTER RESAMPLING")
     print_missing_value_count(train_df)
 
+    # train_df.show(10, truncate=False)
+
+    # IMPUTE MISSING VALUES
+    # train_df = fill_linear_interpolation(
+    #     df=train_df,
+    #     id_cols=['MMSI'],
+    #     order_col='Timestamp',
+    #     value_cols=['ROT','SOG','COG','Heading']
+    # )
+    # train_df.cache()
+    # train_df.count()
+    # print_missing_value_count(train_df)
+
+
+    # Add lags
+    # train_df = add_lagged_features(
+    #     df=train_df,
+    #     id_col='MMSI',
+    #     timestamp_col='Timestamp',
+    #     lat_col='Latitude',
+    #     lon_col='Longitude'
+    # )
 
 
     """
