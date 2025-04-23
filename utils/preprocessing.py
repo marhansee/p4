@@ -2,7 +2,7 @@ import pyspark
 from pyspark.sql import SparkSession, DataFrame
 import logging
 import findspark
-from pyspark.sql.functions import to_timestamp, col, count, when, isnan, lag
+from pyspark.sql.functions import to_timestamp, col, count, when, isnan, lag, struct
 import random
 import sys
 from tempo.tsdf import TSDF
@@ -450,6 +450,11 @@ def preprocess_pipeline(df, forecasting=True):
     train_df = fill_linear_interpolation(train_df, ['MMSI'],'Timestamp', value_cols=value_cols)
     val_df = fill_linear_interpolation(val_df, ['MMSI'],'Timestamp', value_cols=value_cols)
     test_df = fill_linear_interpolation(test_df, ['MMSI'],'Timestamp', value_cols=value_cols)
+
+    # Make trawling label to int
+    train_df = train_df.withColumn('trawling', col('trawling').cast('int'))
+    val_df = val_df.withColumn('trawling', col('trawling').cast('int'))
+    test_df = test_df.withColumn('trawling', col('trawling').cast('int'))
     
     print("Missing value imputation complete!")
 
@@ -490,23 +495,48 @@ def preprocess_pipeline(df, forecasting=True):
             forecast_steps=20
         )
     
-    train_df.show(5)
-    sys.exit()
+    train_df = train_df.orderBy("MMSI", "Timestamp")
+    val_df = val_df.orderBy('MMSI','Timestamp')
+    test_df = test_df.orderBy('MMSI','Timestamp')
 
     return train_df, val_df, test_df
 
 def define_input_output(df, forecasting=True):
-    pass
-    
+    # Drop non-numerical features
+    features_to_drop = ['MMSI','Timestamp']
+    df = df.drop(*features_to_drop)
 
+    if forecasting:
+        df = df.drop('trawling')
+        y_combined = []
+
+        for i in range(1, 21):
+            lat_col = 'y_lat_' + str(i)
+            lon_col = 'y_lon_' + str(i)
+
+            # Pair latitude and longitude columns for each timestep (1 to 20)
+            y_combined.append(struct(col(lat_col), col(lon_col)).alias(f'y_pair_{i}'))
+
+        # Create a new DataFrame with these combined pairs
+        y_df = df.select(*y_combined)
+        # Define target columns
+        X_df = df.drop(*y_combined)
+        y_df.show(5)
+    else:
+        X_df = df.drop('trawling')
+        y_df = df.select('trawling')  
+    return X_df, y_df
 
 def main():
     # Load data
     data_path = "data/aisdk-2025-01-01_fishing_labeled.csv"
     df = load_data(data_path)
 
-    train_df, val_df, test_df = preprocess_pipeline(df)
-    train_df.show(10)
+    train_df, val_df, test_df = preprocess_pipeline(df, forecasting=True)
+    X_train, y_train = define_input_output(train_df, forecasting=True)
+
+    X_train.show(5)
+    y_train.show(5)
 
     # # Drop class B vessels
     # df = drop_class_B(df)
