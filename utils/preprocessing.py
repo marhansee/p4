@@ -146,8 +146,11 @@ def define_forecasting_target(df, max_time_gap=3600, forecast_steps=20):
         df = df.withColumn(f"y_lat_{i}", F.lead("Latitude", i).over(window_spec))
         df = df.withColumn(f"y_lon_{i}", F.lead("Longitude", i).over(window_spec))
 
-    # Step 6: Remove rows that don't have enough data for future prediction (those without target columns)
+    # Remove rows that don't have enough data for future prediction (those without target columns)
     df = df.filter(df[f"y_lat_{forecast_steps}"].isNotNull())
+
+    # Drop intermediate variables
+    df = df.drop('prev_timestamp','time_diff','new_trajectory','trajectory_id')
 
     return df
 
@@ -353,7 +356,17 @@ def add_lagged_features(df, id_col, timestamp_col, lat_col, lon_col):
     
     return final_df
 
-def resampling(df, id_col, timestamp_col, method='resampling'):
+def resampling(df, id_col, timestamp_col, method='resampling', sampling_interval='min'):
+    """
+    Resample or downsample the DataFrame.
+    Note, requires pip install dbl-tempo
+
+    Args:
+        df: DataFrame
+        id_col: Vessel identifier column (e.g., 'MMSI')
+        timestamp_col: Timestamp column
+        method: 'resampling' or 'downsampling': Specifies which method to use
+    """
     # Make sure id_cols is a list
     if not isinstance(id_col, list):
         id_col = [id_col]
@@ -367,7 +380,7 @@ def resampling(df, id_col, timestamp_col, method='resampling'):
     elif method == 'downsampling':
         func = 'floor'
 
-    resampled_tsdf = tsdf.resample(freq='min', func=func)
+    resampled_tsdf = tsdf.resample(freq=sampling_interval, func=func)
     
     df = resampled_tsdf.df
     df = df.orderBy(id_col + [timestamp_col])
@@ -419,17 +432,27 @@ def preprocess_pipeline(df, forecasting=True):
     test_df.cache()
     test_df.count()
 
+
     # Apply resampling/downsampling
-    train_df = resampling(df, 'MMSI', 'Timestamp',method='resampling') # Or downsampling
-    val_df = resampling(df, 'MMSI', 'Timestamp',method='resampling')
-    test_df = resampling(df, 'MMSI', 'Timestamp',method='resampling')
+    train_df = resampling(train_df, 'MMSI', 'Timestamp',method='resampling') # Or downsampling
+    val_df = resampling(val_df, 'MMSI', 'Timestamp',method='resampling')
+    test_df = resampling(test_df, 'MMSI', 'Timestamp',method='resampling')
+    train_df.cache()
+    train_df.count()
+    val_df.cache()
+    val_df.count()
+    test_df.cache()
+    test_df.count()
+    print("Resampling complete")
 
     # Impute missing values with linear interpolation
     value_cols = ['ROT','SOG','COG','Heading']
-    train_df = fill_linear_interpolation(df, 'MMSI','Timestamp', value_cols=value_cols)
-    val_df = fill_linear_interpolation(df, 'MMSI','Timestamp', value_cols=value_cols)
-    test_df = fill_linear_interpolation(df, 'MMSI','Timestamp', value_cols=value_cols)
+    train_df = fill_linear_interpolation(train_df, ['MMSI'],'Timestamp', value_cols=value_cols)
+    val_df = fill_linear_interpolation(val_df, ['MMSI'],'Timestamp', value_cols=value_cols)
+    test_df = fill_linear_interpolation(test_df, ['MMSI'],'Timestamp', value_cols=value_cols)
     
+    print("Missing value imputation complete!")
+
     if forecasting:
         train_df = add_lagged_features(
             df=train_df,
@@ -438,6 +461,11 @@ def preprocess_pipeline(df, forecasting=True):
             lat_col='Latitude',
             lon_col='Longitude'
         )
+        train_df = define_forecasting_target(
+            df=train_df,
+            forecast_steps=20
+        )
+
         val_df = add_lagged_features(
             df=val_df,
             id_col='MMSI',
@@ -445,6 +473,11 @@ def preprocess_pipeline(df, forecasting=True):
             lat_col='Latitude',
             lon_col='Longitude'
         )
+        val_df = define_forecasting_target(
+            df=val_df,
+            forecast_steps=20
+        )
+
         test_df = add_lagged_features(
             df=test_df,
             id_col='MMSI',
@@ -452,6 +485,19 @@ def preprocess_pipeline(df, forecasting=True):
             lat_col='Latitude',
             lon_col='Longitude'
         )
+        test_df = define_forecasting_target(
+            df=test_df,
+            forecast_steps=20
+        )
+    
+    train_df.show(5)
+    sys.exit()
+
+    return train_df, val_df, test_df
+
+def define_input_output(df, forecasting=True):
+    pass
+    
 
 
 def main():
@@ -459,57 +505,60 @@ def main():
     data_path = "data/aisdk-2025-01-01_fishing_labeled.csv"
     df = load_data(data_path)
 
-    # Drop class B vessels
-    df = drop_class_B(df)
+    train_df, val_df, test_df = preprocess_pipeline(df)
+    train_df.show(10)
 
-    # Drop static features
-    features_to_drop = ('Type of mobile','Navigational status','IMO','Callsign',
-                        'Name','Cargo type','Width','Length',
-                        'Type of position fixing device','Destination',
-                        'ETA','Data source type','A','B','C','D','Ship type')
+    # # Drop class B vessels
+    # df = drop_class_B(df)
 
-    df = df.drop(*features_to_drop)
+    # # Drop static features
+    # features_to_drop = ('Type of mobile','Navigational status','IMO','Callsign',
+    #                     'Name','Cargo type','Width','Length',
+    #                     'Type of position fixing device','Destination',
+    #                     'ETA','Data source type','A','B','C','D','Ship type')
 
-    # Drop duplicates
-    df = drop_duplicates(df)
+    # df = df.drop(*features_to_drop)
 
-    # Drop unknown labels
-    df = drop_unknown_label(df)
+    # # Drop duplicates
+    # df = drop_duplicates(df)
 
-    df = drop_vessels_with_all_nulls(
-        df=df,
-        id_col='MMSI',
-        timestamp_col='Timestamp'
-    )
+    # # Drop unknown labels
+    # df = drop_unknown_label(df)
+
+    # df = drop_vessels_with_all_nulls(
+    #     df=df,
+    #     id_col='MMSI',
+    #     timestamp_col='Timestamp'
+    # )
 
 
-    # Split the data
-    train_df, val_df, test_df = split_data(df, train_size=0.7, test_size=0.15, 
-                                           val_size=0.15, random_state=42)
+    # # Split the data
+    # train_df, val_df, test_df = split_data(df, train_size=0.7, test_size=0.15, 
+    #                                        val_size=0.15, random_state=42)
     
-    train_df = train_df.drop('Gear Type')
-    train_df.cache()
-    train_df.count()
+    # train_df = train_df.drop('Gear Type')
+    # train_df.cache()
+    # train_df.count()
 
-    print(f"DataFrame size: {train_df.count()} rows x {len(train_df.columns)} columns")
+    # print(f"DataFrame size: {train_df.count()} rows x {len(train_df.columns)} columns")
 
-    print("")
+    # print("")
 
-    print("BEFORE RESAMPLING:")
-    print_missing_value_count(train_df)
+    # print("BEFORE RESAMPLING:")
+    # print_missing_value_count(train_df)
 
-    # train_df.show(20)
-    train_df = resampling(
-        df=train_df,
-        id_col='MMSI',
-        timestamp_col='Timestamp'
-    )
-    train_df.cache()
-    train_df.count()
-    train_df.show(5)
+    # # train_df.show(20)
+    # train_df = resampling(
+    #     df=train_df,
+    #     id_col='MMSI',
+    #     timestamp_col='Timestamp'
+    # )
+    # train_df.cache()
+    # train_df.count()
+    # train_df.show(5)
     
-    print("AFTER RESAMPLING")
-    print_missing_value_count(train_df)
+    # print("AFTER RESAMPLING")
+    # print_missing_value_count(train_df)
 
     # train_df.show(10, truncate=False)
 
