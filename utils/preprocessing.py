@@ -446,7 +446,7 @@ def preprocess_pipeline(df, forecasting=True):
     print("Resampling complete")
 
     # Impute missing values with linear interpolation
-    value_cols = ['ROT','SOG','COG','Heading']
+    value_cols = ['ROT','SOG','COG','Heading'] # EXPAND ON AILAB
     train_df = fill_linear_interpolation(train_df, ['MMSI'],'Timestamp', value_cols=value_cols)
     val_df = fill_linear_interpolation(val_df, ['MMSI'],'Timestamp', value_cols=value_cols)
     test_df = fill_linear_interpolation(test_df, ['MMSI'],'Timestamp', value_cols=value_cols)
@@ -468,7 +468,7 @@ def preprocess_pipeline(df, forecasting=True):
         )
         train_df = define_forecasting_target(
             df=train_df,
-            forecast_steps=20
+            forecast_steps=20 # ASSUMES RESAMPLING OF 1 MINUTE!!"!#"!¤"!R#"T#"
         )
 
         val_df = add_lagged_features(
@@ -538,80 +538,6 @@ def main():
     X_train.show(5)
     y_train.show(5)
 
-    # # Drop class B vessels
-    # df = drop_class_B(df)
-
-    # # Drop static features
-    # features_to_drop = ('Type of mobile','Navigational status','IMO','Callsign',
-    #                     'Name','Cargo type','Width','Length',
-    #                     'Type of position fixing device','Destination',
-    #                     'ETA','Data source type','A','B','C','D','Ship type')
-
-    # df = df.drop(*features_to_drop)
-
-    # # Drop duplicates
-    # df = drop_duplicates(df)
-
-    # # Drop unknown labels
-    # df = drop_unknown_label(df)
-
-    # df = drop_vessels_with_all_nulls(
-    #     df=df,
-    #     id_col='MMSI',
-    #     timestamp_col='Timestamp'
-    # )
-
-
-    # # Split the data
-    # train_df, val_df, test_df = split_data(df, train_size=0.7, test_size=0.15, 
-    #                                        val_size=0.15, random_state=42)
-    
-    # train_df = train_df.drop('Gear Type')
-    # train_df.cache()
-    # train_df.count()
-
-    # print(f"DataFrame size: {train_df.count()} rows x {len(train_df.columns)} columns")
-
-    # print("")
-
-    # print("BEFORE RESAMPLING:")
-    # print_missing_value_count(train_df)
-
-    # # train_df.show(20)
-    # train_df = resampling(
-    #     df=train_df,
-    #     id_col='MMSI',
-    #     timestamp_col='Timestamp'
-    # )
-    # train_df.cache()
-    # train_df.count()
-    # train_df.show(5)
-    
-    # print("AFTER RESAMPLING")
-    # print_missing_value_count(train_df)
-
-    # train_df.show(10, truncate=False)
-
-    # IMPUTE MISSING VALUES
-    # train_df = fill_linear_interpolation(
-    #     df=train_df,
-    #     id_cols=['MMSI'],
-    #     order_col='Timestamp',
-    #     value_cols=['ROT','SOG','COG','Heading']
-    # )
-    # train_df.cache()
-    # train_df.count()
-    # print_missing_value_count(train_df)
-
-
-    # Add lags
-    # train_df = add_lagged_features(
-    #     df=train_df,
-    #     id_col='MMSI',
-    #     timestamp_col='Timestamp',
-    #     lat_col='Latitude',
-    #     lon_col='Longitude'
-    # )
 
 
     """
