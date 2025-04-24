@@ -116,11 +116,12 @@ def process_fishing_vessels_with_meta(input_dir="data",
 
         # Remove the temporary directory
         shutil.rmtree(temp_dir)
+        # Remove the original file
 
         count = df_labeled.count()
         print(f"Saved {count} records to {output_path}")
         output_files.append(output_path)
-
+        os.remove(data_path)
     return output_files
 
 
