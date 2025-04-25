@@ -9,17 +9,17 @@ spark = SparkSession.builder \
     .getOrCreate()
 
 # Path to your training CSVs
-csv_path = "/project/data/train/*.csv"
+csv_path = "/ceph/project/gatehousep4/data/train*.csv"
 
 # Load and preprocess CSVs
 df = spark.read.option("header", True).option("inferSchema", True).csv(csv_path)
 
-# Optional: filter or preprocess TILPAS
-df = df.select("timestamp", "lat", "lon", "speed", "mmsi", "gear_type")  # adjust as needed
+# Choosing relevant features
+df = df.select("# Timestamp", "MMSI", "Latitude", "Longitude","ROT", "SOG", "COG", "Heading","Width","Length","Draught", "Gear Type", "trawling")  # adjust as needed
 
 # Write to Petastorm-compatible Parquet
-output_path = "file:///project/data/petastorm/train"
+output_path = "file:///ceph/project/gatehousep4/data/train"
 
 # Create and cache the converter
 converter = make_spark_converter(df)
-converter._dataset_path = output_path  # set output path manually
+converter._dataset_path = output_path
