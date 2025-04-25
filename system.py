@@ -68,6 +68,7 @@ def load_cable_position_data(cable_data_path):
 def add_critical_zone(cable_coords, radius_meters=1000):
     """
     Function that adds the critical zone around cables coordinates.
+
     Note,
     This function is based of the official documentation for shapely and pyproj.
     Sources: 
@@ -102,11 +103,11 @@ def interactive_map(cable_dict, vessel_position):
     Each cable will be plotted as a separate polyline on the map.
 
     Note,
-    - This function was created on the basis of multiple sources.
-        Sources: 
-            https://python-visualization.github.io/folium/latest/getting_started.html
-            https://python-visualization.github.io/folium/latest/user_guide/plugins/boat_marker.html'
-            https://stackoverflow.com/questions/51486454/convert-geopandas-shapely-polygon-to-geojson
+    This function was created on the basis of multiple sources.
+    Sources: 
+        https://python-visualization.github.io/folium/latest/getting_started.html
+        https://python-visualization.github.io/folium/latest/user_guide/plugins/boat_marker.html'
+        https://stackoverflow.com/questions/51486454/convert-geopandas-shapely-polygon-to-geojson
 
     Args:
     - cable_dict: A dictionary containing cables with lists of coordinates.
@@ -208,7 +209,7 @@ def compute_distance_from_point_to_cable(current_position, seg_start, seg_end):
     # Compute distance in km using geopy
     dist = geodesic(current_position, closest_point).kilometers
 
-    # Return the distance from the point to the closest point on the segment
+
     return dist
 
 def unit_vector(v):
@@ -244,14 +245,19 @@ def compute_angle(vector1, vector2):
 
 def is_heading_toward_cable(cables, current_pos, predicted_pos, angle_threshold=30, proximity_threshold=10):
     """
-    DD
+    Function checks whether a vessel is headed toward a subsea cable
 
     Args:
     - cables: Dictionary of cable coordinates
-    - current_position: Current position of the vessel at time t=0
+    - current_position: Current position of the vessel at time t=0 (used to compute the distance to the cable from current position)
     - predicted_pos: Forecasting predictions
     - angle_threshold: An angle below 30 degrees signifies that a vessel is headed toward cable
     - proximity_threshold: Threshold distance for determining "close" proximity to a cable. Measured in km
+
+    Returns:
+    - Bool: True | False
+        True: A vessel is headed toward one of the cables
+        False: A vessel is NOT headed toward one of the cables.
     """
     vessel_vector = np.array(predicted_pos[-1]) - np.array(predicted_pos[-2])
     for cable_name, coord in cables.items():
@@ -289,6 +295,7 @@ def main():
     cable_data_path = os.path.join(os.path.dirname(__file__),'data/cable_positions.csv')
     cable_dict = load_cable_position_data(cable_data_path)
 
+    # TESTING WITH DUMMY
     current_position = (57.3569, 10.7360)
     dummy_predicted_pos = [
         (57.30000000, 10.40000000),
