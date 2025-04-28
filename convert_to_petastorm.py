@@ -9,7 +9,8 @@ import numpy as np
 from pyspark.sql.types import FloatType, IntegerType, StringType
 import os
 
-AISSchema = Unischema('AISSchema', [
+# Base Static columns
+fields = [
     UnischemaField('Timestamp', np.string_, (), ScalarCodec(StringType()), False),
     UnischemaField('MMSI', np.int32, (), ScalarCodec(IntegerType()), False),
     UnischemaField('Latitude', np.float32, (), ScalarCodec(FloatType()), False),
@@ -23,14 +24,18 @@ AISSchema = Unischema('AISSchema', [
     UnischemaField('Draught', np.float32, (), ScalarCodec(FloatType()), False),
     UnischemaField('Gear_Type', np.string_, (), ScalarCodec(StringType()), False),
     UnischemaField('trawling', np.int32, (), ScalarCodec(IntegerType()), False),
-    UnischemaField('future_lat_10', np.float32, (), ScalarCodec(FloatType()), True),
-    UnischemaField('future_lon_10', np.float32, (), ScalarCodec(FloatType()), True),
-    UnischemaField('future_lat_20', np.float32, (), ScalarCodec(FloatType()), True),
-    UnischemaField('future_lon_20', np.float32, (), ScalarCodec(FloatType()), True),
-])
+]
+
+# Auto-generate future lags
+for i in range(1, 21):
+    fields.append(UnischemaField(f'future_lat_{i}', np.float32, (), ScalarCodec(FloatType()), True))
+    fields.append(UnischemaField(f'future_lon_{i}', np.float32, (), ScalarCodec(FloatType()), True))
+
+# Build Unischema
+AISSchema = Unischema('AISSchema', fields)
 
 # Auto-versioning logic
-base_path = "/ceph/project/gatehousep4/data/petastorm/train"
+base_path = "/ceph/project/gatehousep4/data/train_labeled"
 os.makedirs(base_path, exist_ok=True)
 existing_versions = []
 
@@ -69,7 +74,7 @@ df = df.withColumnRenamed("# Timestamp", "Timestamp") \
 df = df.coalesce(8)
 
 # Materialize dataset
-with materialize_dataset(spark, f"file://{output_path}", AISSchema, parquet_row_group_size_mb=256):
+with materialize_dataset(spark, f"file://{output_path}", AISSchema, 256):
     df.write.mode('overwrite').parquet(f"file://{output_path}")
 
 # Count total rows (this triggers a small Spark action)
@@ -81,7 +86,7 @@ metadata = {
     "created_on": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
     "source_path": csv_path,
     "output_path": output_path,
-    "schema": [field.name for field in AISSchema.fields],
+    "schema": list(AISSchema.fields),
     "num_partitions": df.rdd.getNumPartitions(),
     "num_rows": num_rows
 }
@@ -92,5 +97,5 @@ metadata_path = os.path.join(output_path.replace("file://", ""), "metadata.json"
 with open(metadata_path, "w") as f:
     json.dump(metadata, f, indent=4)
 
-print(f"✅ Metadata saved at {metadata_path}")
-print(f"✅ Finished saving Petastorm dataset at: {output_path}")
+print(f"Metadata saved at {metadata_path}")
+print(f"Finished saving Petastorm dataset at: {output_path}")
