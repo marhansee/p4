@@ -1,9 +1,12 @@
 import os
 import shutil
 import glob
+import argparse
 from pyspark.sql import SparkSession
 from pyspark.sql import functions as F
 from pyspark.sql.window import Window
+
+
 
 def add_lagged_feature(input_folder, output_folder):
     os.makedirs(output_folder, exist_ok=True)
@@ -59,14 +62,27 @@ def add_lagged_feature(input_folder, output_folder):
     return output_files
 
 if __name__ == '__main__':
+    parser = argparse.ArgumentParser(description="Add lagged features to AIS data.")
+    parser.add_argument('--mode', type=str, required=True, choices=['train', 'test'],
+                        help="Mode: 'train' or 'test'")
+    args = parser.parse_args()
+
+    # Determine folders based on mode
+    if args.mode == 'train':
+        input_folder = "/ceph/project/gatehousep4/data/train"
+        output_folder = "/ceph/project/gatehousep4/data/train_labeled"
+    elif args.mode == 'test':
+        input_folder = "/ceph/project/gatehousep4/data/test"
+        output_folder = "/ceph/project/gatehousep4/data/test_labeled"
+    else:
+        raise ValueError("Invalid mode selected.")
+
+    # Init spark session
     spark = SparkSession.builder \
         .appName("Fishing Vessel Data Processor") \
         .config("spark.sql.shuffle.partitions", "200") \
         .config("spark.driver.memory", "100g") \
         .getOrCreate()
-
-    input_folder = "/ceph/project/gatehousep4/data/train"
-    output_folder = "/ceph/project/gatehousep4/data/train_labeled"
 
     output_files = add_lagged_feature(input_folder, output_folder)
 
