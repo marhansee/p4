@@ -289,8 +289,8 @@ def is_heading_toward_cable(cables, current_pos, predicted_pos, angle_threshold=
     return False
 
 def main():
-    model_path = os.path.join(os.path.dirname(__file__),'models/dummy_classifier.onnx')
-    model = load_model(model_path)
+    # model_path = os.path.join(os.path.dirname(__file__),'models/dummy_classifier.onnx')
+    # model = load_model(model_path)
 
     cable_data_path = os.path.join(os.path.dirname(__file__),'data/cable_positions.csv')
     cable_dict = load_cable_position_data(cable_data_path)
@@ -303,12 +303,12 @@ def main():
         (57.38000000, 10.60000000)
     ]
 
-    is_heading_toward_cable(
-        cables=cable_dict,
-        current_pos=current_position,
-        predicted_pos=dummy_predicted_pos,
-        angle_threshold=30
-    )
+    # is_heading_toward_cable(
+    #     cables=cable_dict,
+    #     current_pos=current_position,
+    #     predicted_pos=dummy_predicted_pos,
+    #     angle_threshold=30
+    # )
 
     interactive_map(cable_dict, vessel_position=current_position)
 
