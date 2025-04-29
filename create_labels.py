@@ -1,28 +1,26 @@
+import os
+import shutil
+import glob
 from pyspark.sql import SparkSession
 from pyspark.sql import functions as F
 from pyspark.sql.window import Window
-import os
 
-# Create Spark session
-spark = SparkSession.builder \
-    .appName("EnhanceAISCSVWithFutureCoordinates") \
-    .config("spark.driver.memory", "100g") \
-    .getOrCreate()
+def add_lagged_feature(input_folder, output_folder):
+    os.makedirs(output_folder, exist_ok=True)
 
-# Define folders
-input_folder = "/ceph/project/gatehousep4/data/train"
-output_folder = "/ceph/project/gatehousep4/data/train_labeled"
+    csv_files = glob.glob(os.path.join(input_folder, "*.csv"))
+    if not csv_files:
+        print(f"No CSV files found in {input_folder}")
+        return []
 
-os.makedirs(output_folder, exist_ok=True)
+    print(f"Found {len(csv_files)} CSV files to process")
+    output_files = []
 
-# Loop over CSV files
-for filename in os.listdir(input_folder):
-    if filename.endswith(".csv"):
-        input_path = os.path.join(input_folder, filename)
-        print(f"Processing {input_path}")
+    for data_path in csv_files:
+        print(f"Processing {data_path}...")
 
         # Read CSV
-        df = spark.read.option("header", True).option("inferSchema", True).csv(input_path)
+        df = spark.read.option("header", True).option("inferSchema", True).csv(data_path)
 
         # Fix Timestamp format
         df = df.withColumnRenamed("# Timestamp", "Timestamp")
@@ -32,13 +30,46 @@ for filename in os.listdir(input_folder):
         window = Window.partitionBy("MMSI").orderBy("Timestamp")
 
         # Add future shifted coordinates
-        df = df.withColumn("future_lat_10", F.lead("Latitude", 10).over(window))
-        df = df.withColumn("future_lon_10", F.lead("Longitude", 10).over(window))
-        df = df.withColumn("future_lat_20", F.lead("Latitude", 20).over(window))
-        df = df.withColumn("future_lon_20", F.lead("Longitude", 20).over(window))
+        for i in range(1, 21):
+            df = df.withColumn(f"future_lat_{i}", F.lead("Latitude", i).over(window))
+            df = df.withColumn(f"future_lon_{i}", F.lead("Longitude", i).over(window))
 
-        # Write enriched CSV back
-        output_path = os.path.join(output_folder, filename)
-        df.write.option("header", True).csv(output_path, mode="overwrite")
+        base_filename = os.path.basename(data_path)
+        new_file_name = base_filename.replace("_fishing_labeled.csv", "prod_ready.csv")
+        output_path = os.path.join(output_folder, new_file_name)
 
-print("✅ All CSVs enriched and saved.")
+        temp_dir = output_path + "_temp"
+
+        (df.coalesce(1)
+         .write
+         .option("header", "true")
+         .mode("overwrite")
+         .csv(temp_dir))
+
+        # Move the single part-xxx.csv to final output_path
+        temp_csv_file = glob.glob(os.path.join(temp_dir, "*.csv"))[0]
+        shutil.move(temp_csv_file, output_path)
+
+        shutil.rmtree(temp_dir)
+
+        count = df.count()
+        print(f"Saved {count} records to {output_path}")
+        output_files.append(output_path)
+
+    return output_files
+
+if __name__ == '__main__':
+    spark = SparkSession.builder \
+        .appName("Fishing Vessel Data Processor") \
+        .config("spark.sql.shuffle.partitions", "200") \
+        .config("spark.driver.memory", "100g") \
+        .getOrCreate()
+
+    input_folder = "/ceph/project/gatehousep4/data/train"
+    output_folder = "/ceph/project/gatehousep4/data/train_labeled"
+
+    output_files = add_lagged_feature(input_folder, output_folder)
+
+    print(f"Completed processing {len(output_files)} files.")
+
+    spark.stop()
