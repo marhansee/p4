@@ -42,6 +42,9 @@ static_cols = ["Width", "Length", "trawling"]
 outlier_iqr_cols = ["Latitude", "Longitude"]
 static_outlier_cols = ["Width", "Length"]
 
+def drop_unknown_label(df):
+    return df.filter(~df['Gear Type'].isin(["UNKNOWN", "INCONCLUSIVE"]))
+
 def save_normalization_stats(df, output_path):
     stats = df.select([
         F.mean(c).alias(f"{c}_mean") for c in continuous_cols
@@ -110,11 +113,38 @@ def forward_fill_features(df):
         df = df.withColumn(col, F.last(col, ignorenulls=True).over(w))
     return df
 
+def apply_median_fallback(df):
+    """Fill remaining nulls after interpolation using per-MMSI median for key features."""
+    fallback_cols = ["Latitude", "Longitude", "SOG", "COG", "ROT"]
+    medians = df.groupBy("MMSI").agg(*[
+        F.expr(f"percentile_approx({c}, 0.5)").alias(f"median_{c}") for c in fallback_cols
+    ])
+    for c in fallback_cols:
+        df = df.join(medians.select("MMSI", F.col(f"median_{c}")), on="MMSI", how="left")
+        df = df.withColumn(c, F.when(F.col(c).isNull(), F.col(f"median_{c}")).otherwise(F.col(c)))
+        df = df.drop(f"median_{c}")
+    return df
+
 def clamp_features(df):
     """Clamp ROT and SOG to realistic limits."""
     df = df.withColumn("SOG", F.when(F.col("SOG") < 0, 0).when(F.col("SOG") > 40, 40).otherwise(F.col("SOG")))
     df = df.withColumn("ROT", F.when(F.col("ROT") < -90, -90).when(F.col("ROT") > 90, 90).otherwise(F.col("ROT")))
     return df
+
+
+def reduce_skewness(df):
+    """Automatically log-transform features if skewness is high."""
+    for col in skewed_positive:
+        skew_val = df.select(F.skewness(col).alias("skew")).collect()[0]["skew"]
+        if abs(skew_val) > 1:
+            print(f"Applying log1p() to positively skewed column: {col} (skew={skew_val:.2f})")
+            df = df.withColumn(col, F.log1p(F.col(col)))
+    for col in skewed_signed:
+        skew_val = df.select(F.skewness(col).alias("skew")).collect()[0]["skew"]
+        if abs(skew_val) > 1:
+            print(f"Applying symmetric log1p() to signed skewed column: {col} (skew={skew_val:.2f})")
+            df = df.withColumn(col, F.when(F.col(col) >= 0, F.log1p(F.col(col)))
+                                     .otherwise(-F.log1p(-F.col(col))))
 
 def interpolate_continuous_features(df):
     """Perform linear interpolation on continuous features within a 5-minute window."""
@@ -142,7 +172,7 @@ def interpolate_continuous_features(df):
             F.col(f"{col}_prev").isNotNull() &
             F.col(f"{col}_next").isNotNull() &
             F.col(f"frac_{col}").isNotNull() &
-            (F.col(f"time_diff_{col}") <= 300),
+            (F.col(f"time_diff_{col}") <= 900),
             F.col(f"{col}_prev") + (F.col(f"{col}_next") - F.col(f"{col}_prev")) * F.col(f"frac_{col}")
         ).otherwise(F.col(col)))
 
@@ -209,12 +239,14 @@ def preprocess_all_files():
 
     for path in csv_files:
         df = load_csv_file(path)
+        df = drop_unknown_label(df)
         df = filter_low_quality_mmsis(df)
         df = filter_outliers(df)
         df = resample_to_fixed_interval(df)
         df = forward_fill_features(df)
         df = clamp_features(df)
         df = interpolate_continuous_features(df)
+        df = reduce_skewness(df)
         df = add_future_lags(df)
         all_data.append(df)
 
