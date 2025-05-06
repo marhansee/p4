@@ -11,14 +11,14 @@ from petastorm.unischema import Unischema, UnischemaField
 from petastorm.codecs import ScalarCodec
 from pyspark.sql.types import FloatType, IntegerType, LongType
 
-# 1) Command-line args
+# Command-line args
 
 parser = argparse.ArgumentParser(description="Convert prod-ready CSVs to Petastorm format.")
 parser.add_argument('--mode', choices=['train', 'test'], required=True,
                     help="Mode: 'train' or 'test'")
 args = parser.parse_args()
 
-# 2) Paths by mode
+# Paths by mode
 
 if args.mode == 'train':
     input_folder = "/ceph/project/gatehousep4/data/train_labeled"
@@ -31,7 +31,7 @@ else:
 
 os.makedirs(output_base, exist_ok=True)
 
-# 3) Auto-versioning
+# Auto-versioning
 
 existing = [int(d[1:]) for d in os.listdir(output_base)
             if d.startswith('v') and d[1:].isdigit()]
@@ -39,7 +39,7 @@ next_v = max(existing) + 1 if existing else 1
 output_path = f"{output_base}/v{next_v}"
 print(f"Saving new Petastorm dataset to: {output_path}")
 
-# 4) Define Unischema
+# Define Unischema
 
 fields = [
     UnischemaField('timestamp_epoch', np.int64, (), ScalarCodec(LongType()), False),
@@ -69,7 +69,7 @@ spark = SparkSession.builder \
     .config("spark.driver.memory", "100g") \
     .getOrCreate()
 spark.conf.set(SparkDatasetConverter.PARENT_CACHE_DIR_URL_CONF,
-               "file:///ceph/project/gatehousep4/data/petastorm_cache")
+               "file:///ceph/projAISSchemaect/gatehousep4/data/petastorm_cache")
 spark.sparkContext.setLogLevel("ERROR")
 
 # Read prod-ready CSVs
