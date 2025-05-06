@@ -2,7 +2,7 @@ from pyspark.sql import SparkSession
 from pyspark.sql.functions import col, max as max_
 from pyspark.sql.functions import sum as spark_sum
 
-y = "/home/martin/p4/aisdk-2024-03-01_prod_ready.csv"
+y = "/home/martin-birch/p4/aisdk-2024-03-01_prod_ready.csv"
 x = "/home/martin/aisdk-2024-03-01_fishing_labeled.csv"
 xy = "/home/martin/p4/data/aisdk-2024-03-01.csv"
 # def main():
