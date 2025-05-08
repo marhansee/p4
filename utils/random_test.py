@@ -3,7 +3,7 @@ from pyspark.sql.functions import col, max as max_
 from pyspark.sql.functions import sum as spark_sum
 
 y = "/home/martin-birch/p4/aisdk-2024-03-01_prod_ready.csv"
-x = "/home/martin/aisdk-2024-03-01_fishing_labeled.csv"
+x = "/home/martin-birch/p4/data/fishing_vessel_data/aisdk-2024-03-01_fishing_labeled.csv"
 xy = "/home/martin/p4/data/aisdk-2024-03-01.csv"
 # def main():
 #     # 1. Create Spark session
@@ -309,79 +309,94 @@ from pyspark.sql.functions import col
 #
 # # Stop Spark session
 # spark.stop()
+#
+# from pyspark.sql import SparkSession
+# from pyspark.sql.functions import col, count, when, isnan
+#
+# # Initialize Spark session
+# spark = SparkSession.builder \
+#     .appName("Fishing MMSI with All NULL Columns") \
+#     .getOrCreate()
+#
+# # Load CSV
+#
+# df = spark.read.option("header", True).option("inferSchema", True).csv(y)
+#
+# # Filter Ship Type == 'Fishing'
+# fishing_df = df.filter(col("Ship Type") == "Fishing")
+# fishing_df = fishing_df.drop("Type of mobile","Navigational status","IMO","Callsign","Name","Ship type","Cargo type","Type of position fixing device","Destination","ETA","Data source type","A","B","C","D")
+#
+# print(fishing_df.columns)
+# # Get list of relevant data columns (excluding MMSI and Ship Type)
+# data_columns = [c for c in fishing_df.columns if c not in ("MMSI", "Ship Type")]
+#
+# # Group by MMSI and count non-NULLs per column
+# agg_exprs = [count(c).alias(f"non_null_{c}") for c in data_columns]
+# grouped = fishing_df.groupBy("MMSI").agg(*agg_exprs)
+#
+# # Identify MMSIs where ANY column is completely NULL
+# condition = None
+# for c in data_columns:
+#     null_check = col(f"non_null_{c}") == 0
+#     condition = null_check if condition is None else condition | null_check
+#
+# mmsi_with_any_all_null_col = grouped.filter(condition)
+#
+# # Final counts
+# unique_mmsi_count = fishing_df.select("MMSI").distinct().count()
+# mmsi_null_col_count = mmsi_with_any_all_null_col.count()
+#
+# print(f"Number of unique fishing MMSI numbers: {unique_mmsi_count}")
+# print(f"Number of fishing MMSIs with at least one column completely NULL: {mmsi_null_col_count}")
+#
+# # Identify columns that are completely NULL (non_null count == 0)
+# null_flags = [(col(f"non_null_{c}") == 0).cast("int").alias(f"all_null_{c}") for c in data_columns]
+# null_flagged_df = grouped.select("MMSI", *null_flags)
+#
+# # Filter to MMSIs where at least one column is completely NULL
+# at_least_one_null = sum([col(f"all_null_{c}") for c in data_columns]) > 0
+# mmsi_with_null_flags = null_flagged_df.filter(at_least_one_null)
+#
+# # Show the columns that are NULL for each MMSI
+# mmsi_with_null_flags.show(truncate=False)
+#
+# # Calculate how many MMSIs have each column completely NULL
+# null_counts = null_flagged_df.select([
+#     spark_sum(col(f"all_null_{c}")).alias(f"total_all_null_{c}")
+#     for c in data_columns
+# ])
+#
+# # Show the result
+# null_counts.show(truncate=False)
+#
+# # Step 1: Get MMSIs with at least one all-null column
+# bad_mmsis = mmsi_with_null_flags.select("MMSI").distinct()
+#
+# # Step 2: Total number of rows in the fishing dataset
+# total_rows = fishing_df.count()
+#
+# # Step 3: Join to find all rows belonging to bad MMSIs
+# bad_rows_df = fishing_df.join(bad_mmsis, on="MMSI", how="inner")
+#
+# # Step 4: Count rows from bad MMSIs
+# bad_rows_count = bad_rows_df.count()
+#
+# # Step 5: Compute and print proportion
+# print(f"Total rows in fishing dataset: {total_rows}")
+# print(f"Rows with MMSIs that have one or more all-null columns: {bad_rows_count}")
+# print(f"Percentage: {100 * bad_rows_count / total_rows:.2f}%")
+
+
 
 from pyspark.sql import SparkSession
-from pyspark.sql.functions import col, count, when, isnan
 
 # Initialize Spark session
 spark = SparkSession.builder \
-    .appName("Fishing MMSI with All NULL Columns") \
+    .appName("Unique Cargo Types") \
     .getOrCreate()
 
 # Load CSV
+df = spark.read.option("header", True).option("inferSchema", True).csv(x)
 
-df = spark.read.option("header", True).option("inferSchema", True).csv(y)
-
-# Filter Ship Type == 'Fishing'
-fishing_df = df.filter(col("Ship Type") == "Fishing")
-fishing_df = fishing_df.drop("Type of mobile","Navigational status","IMO","Callsign","Name","Ship type","Cargo type","Type of position fixing device","Destination","ETA","Data source type","A","B","C","D")
-
-print(fishing_df.columns)
-# Get list of relevant data columns (excluding MMSI and Ship Type)
-data_columns = [c for c in fishing_df.columns if c not in ("MMSI", "Ship Type")]
-
-# Group by MMSI and count non-NULLs per column
-agg_exprs = [count(c).alias(f"non_null_{c}") for c in data_columns]
-grouped = fishing_df.groupBy("MMSI").agg(*agg_exprs)
-
-# Identify MMSIs where ANY column is completely NULL
-condition = None
-for c in data_columns:
-    null_check = col(f"non_null_{c}") == 0
-    condition = null_check if condition is None else condition | null_check
-
-mmsi_with_any_all_null_col = grouped.filter(condition)
-
-# Final counts
-unique_mmsi_count = fishing_df.select("MMSI").distinct().count()
-mmsi_null_col_count = mmsi_with_any_all_null_col.count()
-
-print(f"Number of unique fishing MMSI numbers: {unique_mmsi_count}")
-print(f"Number of fishing MMSIs with at least one column completely NULL: {mmsi_null_col_count}")
-
-# Identify columns that are completely NULL (non_null count == 0)
-null_flags = [(col(f"non_null_{c}") == 0).cast("int").alias(f"all_null_{c}") for c in data_columns]
-null_flagged_df = grouped.select("MMSI", *null_flags)
-
-# Filter to MMSIs where at least one column is completely NULL
-at_least_one_null = sum([col(f"all_null_{c}") for c in data_columns]) > 0
-mmsi_with_null_flags = null_flagged_df.filter(at_least_one_null)
-
-# Show the columns that are NULL for each MMSI
-mmsi_with_null_flags.show(truncate=False)
-
-# Calculate how many MMSIs have each column completely NULL
-null_counts = null_flagged_df.select([
-    spark_sum(col(f"all_null_{c}")).alias(f"total_all_null_{c}")
-    for c in data_columns
-])
-
-# Show the result
-null_counts.show(truncate=False)
-
-# Step 1: Get MMSIs with at least one all-null column
-bad_mmsis = mmsi_with_null_flags.select("MMSI").distinct()
-
-# Step 2: Total number of rows in the fishing dataset
-total_rows = fishing_df.count()
-
-# Step 3: Join to find all rows belonging to bad MMSIs
-bad_rows_df = fishing_df.join(bad_mmsis, on="MMSI", how="inner")
-
-# Step 4: Count rows from bad MMSIs
-bad_rows_count = bad_rows_df.count()
-
-# Step 5: Compute and print proportion
-print(f"Total rows in fishing dataset: {total_rows}")
-print(f"Rows with MMSIs that have one or more all-null columns: {bad_rows_count}")
-print(f"Percentage: {100 * bad_rows_count / total_rows:.2f}%")
+# Select distinct Cargo Type values (including null)
+df.select("Cargo Type").distinct().show()
