@@ -42,8 +42,17 @@ static_cols = ["Width", "Length", "trawling"]
 outlier_iqr_cols = ["Latitude", "Longitude"]
 static_outlier_cols = ["Width", "Length"]
 
+skewed_positive = ["SOG", "Draught"]
+skewed_signed = ["ROT"]
+
+def filter_relevant_columns(df):
+    return df.select(["MMSI", "ts"] + static_cols + continuous_cols)
+
 def drop_unknown_label(df):
     return df.filter(~df['Gear Type'].isin(["UNKNOWN", "INCONCLUSIVE"]))
+
+def drop_class_b(df):
+    return df.filter(~df['Type of mobile'].isin(["B"]))
 
 def save_normalization_stats(df, output_path):
     stats = df.select([
@@ -113,18 +122,6 @@ def forward_fill_features(df):
         df = df.withColumn(col, F.last(col, ignorenulls=True).over(w))
     return df
 
-def apply_median_fallback(df):
-    """Fill remaining nulls after interpolation using per-MMSI median for key features."""
-    fallback_cols = ["Latitude", "Longitude", "SOG", "COG", "ROT"]
-    medians = df.groupBy("MMSI").agg(*[
-        F.expr(f"percentile_approx({c}, 0.5)").alias(f"median_{c}") for c in fallback_cols
-    ])
-    for c in fallback_cols:
-        df = df.join(medians.select("MMSI", F.col(f"median_{c}")), on="MMSI", how="left")
-        df = df.withColumn(c, F.when(F.col(c).isNull(), F.col(f"median_{c}")).otherwise(F.col(c)))
-        df = df.drop(f"median_{c}")
-    return df
-
 def clamp_features(df):
     """Clamp ROT and SOG to realistic limits."""
     df = df.withColumn("SOG", F.when(F.col("SOG") < 0, 0).when(F.col("SOG") > 40, 40).otherwise(F.col("SOG")))
@@ -172,7 +169,7 @@ def interpolate_continuous_features(df):
             F.col(f"{col}_prev").isNotNull() &
             F.col(f"{col}_next").isNotNull() &
             F.col(f"frac_{col}").isNotNull() &
-            (F.col(f"time_diff_{col}") <= 900),
+            (F.col(f"time_diff_{col}") <= 300),
             F.col(f"{col}_prev") + (F.col(f"{col}_next") - F.col(f"{col}_prev")) * F.col(f"frac_{col}")
         ).otherwise(F.col(col)))
 
@@ -238,22 +235,31 @@ def preprocess_all_files():
     output_files = []
 
     for path in csv_files:
+
+        # Load data
         df = load_csv_file(path)
+
+        # Data processing
+
+        df = drop_class_b(df)
         df = drop_unknown_label(df)
+        df = filter_relevant_columns(df)
         df = filter_low_quality_mmsis(df)
         df = filter_outliers(df)
         df = resample_to_fixed_interval(df)
         df = forward_fill_features(df)
         df = clamp_features(df)
         df = interpolate_continuous_features(df)
-        df = reduce_skewness(df)
         df = add_future_lags(df)
+
         all_data.append(df)
 
+        # Saving processed data
         base = os.path.basename(path).replace("_fishing_labeled.csv", "_prod_ready.csv")
         output_file = write_single_output(df, base, output_folder)
         output_files.append(output_file)
 
+    # Computes normalization stats based on training data
     if all_data:
         full_df = all_data[0]
         for df_part in all_data[1:]:
