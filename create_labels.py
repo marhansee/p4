@@ -6,23 +6,24 @@ import argparse
 from pyspark.sql import SparkSession, functions as F
 from pyspark.sql.window import Window
 from functools import reduce
+from pyspark.sql.types import StructType, StructField, StringType, DoubleType, IntegerType
+from pyspark.sql.functions import col, unix_timestamp, to_timestamp, explode, sequence, min, max
+
 
 # Argument parsing
-parser = argparse.ArgumentParser(
-    description="Process AIS data with resampling, interpolation, and lag generation."
-)
+parser = argparse.ArgumentParser(description="Process AIS data with resampling, interpolation, and lag generation.")
 parser.add_argument('--mode', choices=['train', 'test'], required=True)
+parser.add_argument('--version', type=str, required=True, help="Version name, e.g. v1, v2")
+
 args = parser.parse_args()
 
-# Set folders
-if args.mode == 'train':
-    input_folder = "/ceph/project/gatehousep4/data/train"
-    output_folder = "/ceph/project/gatehousep4/data/train_labeled"
-elif args.mode == 'test':
-    input_folder = "/ceph/project/gatehousep4/data/random"
-    output_folder = "/ceph/project/gatehousep4/data/random_labeled"
-else:
-    raise ValueError("Invalid mode")
+base_input = f"/ceph/project/gatehousep4/data/{args.mode}/{args.version}"
+base_output = f"/ceph/project/gatehousep4/data/{args.mode}_labeled/{args.version}"
+
+os.makedirs(base_output, exist_ok=True)
+
+input_folder = base_input
+output_folder = base_output
 
 os.makedirs(output_folder, exist_ok=True)
 
@@ -34,6 +35,37 @@ spark = SparkSession.builder \
     .config("spark.driver.memory", "100g") \
     .getOrCreate()
 spark.sparkContext.setLogLevel("ERROR")
+
+schema = StructType([
+    StructField("MMSI", IntegerType(), True),
+    StructField("# Timestamp", StringType(), True),
+    StructField("Type of mobile", StringType(), True),
+    StructField("Latitude", DoubleType(), True),
+    StructField("Longitude", DoubleType(), True),
+    StructField("Navigational status", StringType(), True),
+    StructField("ROT", DoubleType(), True),
+    StructField("SOG", DoubleType(), True),
+    StructField("COG", DoubleType(), True),
+    StructField("Heading", IntegerType(), True),
+    StructField("IMO", StringType(), True),
+    StructField("Callsign", StringType(), True),
+    StructField("Name", StringType(), True),
+    StructField("Ship type", StringType(), True),
+    StructField("Cargo type", StringType(), True),
+    StructField("Width", IntegerType(), True),
+    StructField("Length", IntegerType(), True),
+    StructField("Type of position fixing device", StringType(), True),
+    StructField("Draught", DoubleType(), True),
+    StructField("Destination", StringType(), True),
+    StructField("ETA", StringType(), True),
+    StructField("Data source type", StringType(), True),
+    StructField("A", IntegerType(), True),
+    StructField("B", IntegerType(), True),
+    StructField("C", IntegerType(), True),
+    StructField("D", IntegerType(), True),
+    StructField("Gear Type", StringType(), True),
+    StructField("trawling", IntegerType(), True),
+])
 
 # Feature lists
 continuous_cols = ["Latitude", "Longitude", "ROT", "SOG", "COG", "Heading", "Draught"]
@@ -143,9 +175,14 @@ def reduce_skewness(df):
             df = df.withColumn(col, F.when(F.col(col) >= 0, F.log1p(F.col(col)))
                                      .otherwise(-F.log1p(-F.col(col))))
 
+def round_timestamps(df):
+    df = df.withColumn("ts", F.from_unixtime((F.unix_timestamp("ts") / 10).cast("int") * 10))
+    return df
+
 def interpolate_continuous_features(df):
-    """Perform linear interpolation on continuous features within a 5-minute window."""
+    """Perform linear interpolation on continuous features within a 5-minute window"""
     for col in continuous_cols:
+
         w_prev = Window.partitionBy("MMSI").orderBy("ts").rowsBetween(Window.unboundedPreceding, 0)
         w_next = Window.partitionBy("MMSI").orderBy("ts").rowsBetween(0, Window.unboundedFollowing)
 
@@ -169,7 +206,7 @@ def interpolate_continuous_features(df):
             F.col(f"{col}_prev").isNotNull() &
             F.col(f"{col}_next").isNotNull() &
             F.col(f"frac_{col}").isNotNull() &
-            (F.col(f"time_diff_{col}") <= 300),
+            (F.col(f"time_diff_{col}") <= 300),  # 5 minutes
             F.col(f"{col}_prev") + (F.col(f"{col}_next") - F.col(f"{col}_prev")) * F.col(f"frac_{col}")
         ).otherwise(F.col(col)))
 
@@ -190,38 +227,94 @@ def get_columns():
 
 def load_csv_file(path):
     """Load and clean a single CSV file."""
-    df = spark.read.option("header", True).option("inferSchema", True).csv(path)
+    df = spark.read.option("header", True).schema(schema).csv(path)
     df = df.withColumnRenamed("# Timestamp", "ts_raw")
     df = df.withColumn("ts", F.to_timestamp("ts_raw", "dd/MM/yyyy HH:mm:ss")).drop("ts_raw")
     df = df.dropDuplicates(["MMSI", "ts"])
     return df
 
 def write_single_output(df, base, output_folder):
-    """Write the DataFrame to a single CSV file."""
-    temp_dir = os.path.join(output_folder, base + "_tmp")
-    df.coalesce(1).write.option("header", True).mode("overwrite").csv(temp_dir)
-    part_files = glob.glob(os.path.join(temp_dir, "part-*.csv"))
-    if not part_files:
-        raise FileNotFoundError(f"No CSV part file found in {temp_dir}")
-    tmp_csv = part_files[0]
-    dest = os.path.join(output_folder, base)
-    shutil.move(tmp_csv, dest)
-    shutil.rmtree(temp_dir)
-    return dest
+    out_path = os.path.join(output_folder, base.replace(".csv", ""))
+    df = df.repartition("MMSI")
+    df.write.mode("overwrite").parquet(out_path)
+
+# def write_single_output(df, base, output_folder):
+#     """Write the DataFrame to a single CSV file."""
+#     temp_dir = os.path.join(output_folder, base + "_tmp")
+#     df.coalesce(1).write.option("header", True).mode("overwrite").csv(temp_dir)
+#     part_files = glob.glob(os.path.join(temp_dir, "part-*.csv"))
+#     if not part_files:
+#         raise FileNotFoundError(f"No CSV part file found in {temp_dir}")
+#     tmp_csv = part_files[0]
+#     dest = os.path.join(output_folder, base)
+#     shutil.move(tmp_csv, dest)
+#     shutil.rmtree(temp_dir)
+#     return dest
+
+def drop_mmsis_with_nulls(df):
+    """
+    Drops entire MMSIs from the DataFrame if any of the specified columns contain nulls.
+    Intended to be used after interpolation/resampling.
+    """
+    # Count nulls per MMSI
+    null_counts = df.groupBy("MMSI").agg(*[
+        F.sum(F.col(c).isNull().cast("int")).alias(f"{c}_nulls") for c in continuous_cols
+    ])
+
+    # Filter MMSIs where all specified columns have zero nulls
+    conditions = [F.col(f"{c}_nulls") == 0 for c in continuous_cols]
+    good_mmsis = null_counts.where(reduce(lambda x, y: x & y, conditions)).select("MMSI")
+
+    # Join back to original DF
+    df_clean = df.join(good_mmsis, on="MMSI", how="inner")
+    return df_clean
+
 
 def resample_to_fixed_interval(df):
-    """Resample data to fixed 10-second intervals per MMSI."""
-    bounds = df.groupBy("MMSI").agg(F.min("ts").alias("min_ts"), F.max("ts").alias("max_ts"))
-    grid = bounds.select("MMSI", F.explode(F.sequence("min_ts", "max_ts", F.expr("INTERVAL 10 seconds"))).alias("ts"))
+    """Resample data to fixed 10-second intervals using UNIX epoch seconds."""
+
+    # First align ts to the 10s grid (crucial!)
+    df = df.withColumn("timestamp_epoch", (F.unix_timestamp("ts") / 10).cast("int") * 10)
+    df = df.withColumn("ts", F.to_timestamp("timestamp_epoch"))
+
+    # Calculate bounds for each MMSI
+    bounds = df.groupBy("MMSI").agg(
+        F.min("timestamp_epoch").alias("min_epoch"),
+        F.max("timestamp_epoch").alias("max_epoch")
+    )
+
+    # Create 10s-aligned grid
+    grid = bounds.select(
+        "MMSI",
+        explode(sequence(col("min_epoch"), col("max_epoch"), F.lit(10))).alias("timestamp_epoch")
+    ).withColumn("ts", to_timestamp(col("timestamp_epoch")))
+
+    # Join aligned data to grid
     return grid.join(df, on=["MMSI", "ts"], how="left").orderBy("MMSI", "ts")
+
+def drop_rows_with_null_future_coords(df, horizon=20):
+    """Drop rows where any future latitude or longitude column is null."""
+    conditions = [F.col(f"future_lat_{i}").isNotNull() & F.col(f"future_lon_{i}").isNotNull() for i in range(1, horizon + 1)]
+    combined_condition = reduce(lambda x, y: x & y, conditions)
+    return df.filter(combined_condition)
 
 def add_future_lags(df, horizon=20):
     """Add future latitude and longitude columns for prediction targets."""
+
+    # Drop existing timestamp_epoch if it exists to avoid ambiguity
+    if "timestamp_epoch" in df.columns:
+        df = df.drop("timestamp_epoch")
+
+    # Recreate timestamp_epoch for ordering
     df = df.withColumn("timestamp_epoch", F.unix_timestamp("ts").cast("long"))
+
+    # Define window for future values
     w = Window.partitionBy("MMSI").orderBy("timestamp_epoch")
+
     for i in range(1, horizon + 1):
         df = df.withColumn(f"future_lat_{i}", F.lead("Latitude", i).over(w))
         df = df.withColumn(f"future_lon_{i}", F.lead("Longitude", i).over(w))
+
     return df
 
 def preprocess_all_files():
@@ -246,11 +339,14 @@ def preprocess_all_files():
         df = filter_relevant_columns(df)
         df = filter_low_quality_mmsis(df)
         df = filter_outliers(df)
+
         df = resample_to_fixed_interval(df)
-        df = forward_fill_features(df)
-        df = clamp_features(df)
         df = interpolate_continuous_features(df)
+        df = forward_fill_features(df)
+        df = drop_mmsis_with_nulls(df)
+        df = clamp_features(df)
         df = add_future_lags(df)
+        df = drop_rows_with_null_future_coords(df)
 
         all_data.append(df)
 
