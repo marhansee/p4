@@ -5,7 +5,8 @@ import os
 import sys
 import pandas as pd
 import folium
-from folium.plugins import BoatMarker
+from folium.plugins import BoatMarker, MousePosition
+from folium import Element
 import webbrowser
 from shapely.geometry import LineString
 import geopandas as gpd
@@ -97,7 +98,7 @@ def add_critical_zone(cable_coords, radius_meters=1000):
 
     return buffered_latlon
 
-def interactive_map(cable_dict, vessel_position):
+def interactive_map(cable_dict, vessel_position, ais_csv_path=None, plot_single_vessel_id=None):
     """
     Function to create an interactive map with multiple cables. The interactive map is opened in a webbrowser.
     Each cable will be plotted as a separate polyline on the map.
@@ -112,6 +113,9 @@ def interactive_map(cable_dict, vessel_position):
     Args:
     - cable_dict: A dictionary containing cables with lists of coordinates.
                   Example: {'Cable_1': [(lat1, lon1), (lat2, lon2), ...], 'Cable_2': [(lat3, lon3), (lat4, lon4), ...]}
+    - vessel_position: A dictionary containing keys: 'current_position' and 'heading'; used to visualize a vessel
+    - ais_csv_path: Path to CSV file with AIS data
+    - plot_single_vessel_id: MMSI-number; if provided, only that vessel's trajectory is visualized
 
     Returns:
     - Nothing. 
@@ -123,17 +127,25 @@ def interactive_map(cable_dict, vessel_position):
     if not os.path.exists(map_file):
         os.makedirs(map_dir, exist_ok=True)
 
-    # Define map
+    # Define map and start location
     m = folium.Map(location=[56.573213, 10.687685], 
                 zoom_start=7, 
                 tiles='Cartodb Positron'
     )
 
+    MousePosition(
+        position="bottomleft",
+        separator=" | ",
+        prefix="Coordinates:",
+        lat_formatter="function(num) {return L.Util.formatNum(num, 5);}",
+        lng_formatter="function(num) {return L.Util.formatNum(num, 5);}"
+    ).add_to(m)
+
     # Draw cable lines
     for cable, coords in cable_dict.items():
         folium.PolyLine(coords, tooltip=cable).add_to(m)
 
-        buffered_polygon = add_critical_zone(coords, radius_meters=1600)
+        buffered_polygon = add_critical_zone(coords, radius_meters=400)
 
         # Convert Shapely Polygon to GeoJSON FeatureCollection
         feature = {
@@ -160,10 +172,40 @@ def interactive_map(cable_dict, vessel_position):
 
 
         BoatMarker(
-            location=vessel_position, heading=30, color="#8f8"
+            location=vessel_position['current_position'], 
+            heading=vessel_position['heading_degrees'], 
+            color="#8f8"
         ).add_to(m)
 
+    if ais_csv_path and os.path.exists(ais_csv_path):
+
+        # Load AIS data
+        ais_df = pd.read_csv(ais_csv_path, parse_dates=['# Timestamp'])
+
+        # Drop rows with missing coordinates
+        ais_df = ais_df.dropna(subset=['Latitude', 'Longitude'])
+
+        # Only plot for a single vessel if MMSI is provided
+        if plot_single_vessel_id:
+            ais_df = ais_df[ais_df['MMSI']==plot_single_vessel_id]
     
+        # Group by vessel (MMSI)
+        for mmsi, vessel_data in ais_df.groupby('MMSI'):
+            # Sort by time
+            vessel_data = vessel_data.sort_values('# Timestamp')
+
+            # Create list of (lat, lon) tuples
+            trajectory = list(zip(vessel_data['Latitude'], vessel_data['Longitude']))
+
+            # Draw the vessel's path
+            folium.PolyLine(
+                trajectory,
+                color='green',
+                weight=2,
+                opacity=0.6,
+                tooltip=f'Vessel {mmsi}'
+            ).add_to(m)
+
     # Save html file
     m.save(map_file)
 
@@ -289,16 +331,8 @@ def is_heading_toward_cable(cables, current_pos, predicted_pos, angle_threshold=
     return False
 
 def main():
-<<<<<<< HEAD
-    classifier_path = os.path.join(os.path.dirname(__file__),'models/dummy_classifier.onnx')
-    forecaster_path = os.path.join(os.path.dirname(__file__),'models/dummy_forecaster.onnx')
-
-    classifier = load_model(classifier_path)
-    forecaster = load_model(forecaster)
-=======
     # model_path = os.path.join(os.path.dirname(__file__),'models/dummy_classifier.onnx')
     # model = load_model(model_path)
->>>>>>> bd9477701c794a870cdd7eeaa0b0aa07bf73348c
 
     cable_data_path = os.path.join(os.path.dirname(__file__),'data/cable_positions.csv')
     cable_dict = load_cable_position_data(cable_data_path)
@@ -306,46 +340,48 @@ def main():
     
 
     # TESTING WITH DUMMY
-    current_position = (57.3569, 10.7360)
+    vessel_pos = {
+        'current_position': (57.13079, 11.51202),
+        'heading_degrees': 200
+    }
+
+    current_position = (57.37489, 10.6485)
     dummy_predicted_pos = [
         (57.30000000, 10.40000000),
         (57.34000000, 10.50000000),
         (57.38000000, 10.60000000)
     ]
 
-<<<<<<< HEAD
-    heading_toward = is_heading_toward_cable(
-        cables=cable_dict,
-        current_pos=current_position,
-        predicted_pos=dummy_predicted_pos,
-        angle_threshold=30
-    )
-=======
     # is_heading_toward_cable(
     #     cables=cable_dict,
     #     current_pos=current_position,
     #     predicted_pos=dummy_predicted_pos,
     #     angle_threshold=30
     # )
->>>>>>> bd9477701c794a870cdd7eeaa0b0aa07bf73348c
 
-    if heading_toward:
-        print("Vessel is heading toward a cable. Running trawling classifier...")
+    # if heading_toward:
+    #     print("Vessel is heading toward a cable. Running trawling classifier...")
 
-        data = preprocess(trawling=True) # En eller anden preprocess pipeline
+    #     data = preprocess(trawling=True) # En eller anden preprocess pipeline
 
-        prediction = classifier.predict(data)
+    #     prediction = classifier.predict(data)
         
-        if prediction == 1:
-            print("Trawling activity detected! Take action!")
-        else:
-            print("Vessel is approaching, but no trawling detected.")
+    #     if prediction == 1:
+    #         print("Trawling activity detected! Take action!")
+    #     else:
+    #         print("Vessel is approaching, but no trawling detected.")
 
-    else:
-        print("Vessel is not heading toward any cable.")
+    # else:
+    #     print("Vessel is not heading toward any cable.")
 
-
-    # interactive_map(cable_dict, vessel_position=current_position)
+    # Load AIS data and plot
+    ais_path = os.path.join(os.path.dirname(__file__),'data/aisdk-2025-01-04_fishing_labeled.csv')
+    interactive_map(
+        cable_dict, 
+        vessel_position=vessel_pos, 
+        ais_csv_path=ais_path, 
+        plot_single_vessel_id=220127000
+    )
 
 if __name__ == '__main__':
     main()
