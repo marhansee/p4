@@ -388,15 +388,110 @@ from pyspark.sql.functions import col
 
 
 
+# from pyspark.sql import SparkSession
+#
+# # Initialize Spark session
+# spark = SparkSession.builder \
+#     .appName("Unique Cargo Types") \
+#     .getOrCreate()
+#
+# # Load CSV
+# df = spark.read.option("header", True).option("inferSchema", True).csv(x)
+#
+# # Select distinct Cargo Type values (including null)
+# df.select("Cargo Type").distinct().show()
+
+# from pyspark.sql import SparkSession
+#
+# # Temporarily use inferSchema once
+# spark = SparkSession.builder.getOrCreate()
+#
+# sample_path = "/home/martin/aisdk-2024-03-01_fishing_labeled.csv"  # Replace with a real file path
+# df = spark.read.option("header", True).option("inferSchema", True).csv(sample_path)
+#
+# # Print schema in StructType format
+# print(df.schema.simpleString())  # Quick overview
+# df.printSchema()  # Human-readable tree
+#
+# from pyspark.sql.types import StructType
+#
+# # This gives you actual StructType string you can reuse
+# print(df.schema.json())
+
+
+
+# from pyspark.sql import SparkSession
+#
+# # Initialize Spark session
+# spark = SparkSession.builder \
+#     .appName("Unique Cargo Types") \
+#     .getOrCreate()
+# csv = "/home/martin/p4/data/aisdk-2024-03-01.csv"
+# # csv = "/home/martin/p4/aisdk-2024-03-01_fishing_labeled.csv"
+# # Load CSV
+#
+# df = spark.read.option("header", True).option("inferSchema", True).csv(csv)
+# # Filter by MMSI
+# filtered_df = df.filter((col("MMSI") == 219001695) & (col("Ship Type") == "Fishing"))
+#
+# # Show results (optional)
+# filtered_df.show()
+#
+# # # Save to CSV (optional)
+# # output_path = "/path/to/output/filtered_ais.csv"  # replace with desired output path
+# # filtered_df.write.csv(output_path, header=True, mode="overwrite")
+#
+# # Stop Spark session
+# spark.stop()
+# Initialize Spark session
+#
+# from pyspark.sql import SparkSession
+#
+# spark = SparkSession.builder.appName("ExtractSingleMMSI").getOrCreate()
+#
+# # Replace with your actual large file path
+# input_path = "/home/martin/p4/aisdk-2024-03-01_fishing_labeled.csv"
+# output_path = "/home/martin/p4/aisdk-2024-03-01_small_fishing_labeled.csv"
+#
+# # Load with schema if available, or use inferSchema
+# df = spark.read.option("header", True).csv(input_path)
+#
+# # Filter by MMSI
+# filtered = df.filter(df["MMSI"] == 219001695)
+#
+# # Save as single CSV file
+# filtered.coalesce(1).write.option("header", True).mode("overwrite").csv(output_path + "_tmp")
+#
+# # Move the file out of Spark's folder structure
+# import glob
+# import shutil
+# import os
+#
+# part_file = glob.glob(output_path + "_tmp/part-*.csv")[0]
+# shutil.move(part_file, output_path)
+# shutil.rmtree(output_path + "_tmp")
+#
+# spark.stop()
+
+#
+# from pyspark.sql import SparkSession
+# from pyspark.sql.functions import col, sum
+#
+# # Initialize Spark
+# spark = SparkSession.builder \
+#     .appName("Check Nulls in CSV") \
+#     .getOrCreate()
+#
+# # Load CSV
+# df = spark.read.option("header", True).option("inferSchema", True).csv("/home/martin/p4/aisdk-2024-03-01_prod_ready.csv")
+# print((df.count(), len(df.columns)))
+# # Count nulls per column
+# null_counts = df.select([sum(col(c).isNull().cast("int")).alias(c) for c in df.columns])
+# null_counts.show(vertical=True, truncate=False)
+
+
 from pyspark.sql import SparkSession
 
-# Initialize Spark session
-spark = SparkSession.builder \
-    .appName("Unique Cargo Types") \
-    .getOrCreate()
-
-# Load CSV
-df = spark.read.option("header", True).option("inferSchema", True).csv(x)
-
-# Select distinct Cargo Type values (including null)
-df.select("Cargo Type").distinct().show()
+spark = SparkSession.builder.getOrCreate()
+df = spark.read.parquet('/home/martin/p4/aisdk-2024-05-10_prod_ready/part-00001-a2495281-9d27-496e-b84c-94a5c159d390-c000.snappy.parquet')
+df.show()
