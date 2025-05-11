@@ -145,7 +145,7 @@ def interactive_map(cable_dict, vessel_position, ais_csv_path=None, plot_single_
     for cable, coords in cable_dict.items():
         folium.PolyLine(coords, tooltip=cable).add_to(m)
 
-        buffered_polygon = add_critical_zone(coords, radius_meters=400)
+        buffered_polygon = add_critical_zone(coords, radius_meters=1600)
 
         # Convert Shapely Polygon to GeoJSON FeatureCollection
         feature = {
