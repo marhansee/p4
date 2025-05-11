@@ -289,11 +289,16 @@ def is_heading_toward_cable(cables, current_pos, predicted_pos, angle_threshold=
     return False
 
 def main():
+<<<<<<< HEAD
     classifier_path = os.path.join(os.path.dirname(__file__),'models/dummy_classifier.onnx')
     forecaster_path = os.path.join(os.path.dirname(__file__),'models/dummy_forecaster.onnx')
 
     classifier = load_model(classifier_path)
     forecaster = load_model(forecaster)
+=======
+    # model_path = os.path.join(os.path.dirname(__file__),'models/dummy_classifier.onnx')
+    # model = load_model(model_path)
+>>>>>>> bd9477701c794a870cdd7eeaa0b0aa07bf73348c
 
     cable_data_path = os.path.join(os.path.dirname(__file__),'data/cable_positions.csv')
     cable_dict = load_cable_position_data(cable_data_path)
@@ -308,12 +313,21 @@ def main():
         (57.38000000, 10.60000000)
     ]
 
+<<<<<<< HEAD
     heading_toward = is_heading_toward_cable(
         cables=cable_dict,
         current_pos=current_position,
         predicted_pos=dummy_predicted_pos,
         angle_threshold=30
     )
+=======
+    # is_heading_toward_cable(
+    #     cables=cable_dict,
+    #     current_pos=current_position,
+    #     predicted_pos=dummy_predicted_pos,
+    #     angle_threshold=30
+    # )
+>>>>>>> bd9477701c794a870cdd7eeaa0b0aa07bf73348c
 
     if heading_toward:
         print("Vessel is heading toward a cable. Running trawling classifier...")
