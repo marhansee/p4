@@ -25,14 +25,12 @@ os.makedirs(base_output, exist_ok=True)
 input_folder = base_input
 output_folder = base_output
 
-os.makedirs(output_folder, exist_ok=True)
-
 # Initialize Spark
 spark = SparkSession.builder \
     .appName(f"AIS Labeling ({args.mode})") \
     .config("spark.sql.shuffle.partitions", "128") \
     .config("spark.local.dir", "/ceph/project/gatehousep4/data/petastorm_cache") \
-    .config("spark.driver.memory", "100g") \
+    .config("spark.driver.memory", "200") \
     .getOrCreate()
 spark.sparkContext.setLogLevel("ERROR")
 
@@ -235,7 +233,6 @@ def load_csv_file(path):
 
 def write_single_output(df, base, output_folder):
     out_path = os.path.join(output_folder, base.replace(".csv", ""))
-    df = df.repartition("MMSI")
     df.write.mode("overwrite").parquet(out_path)
 
 # def write_single_output(df, base, output_folder):
@@ -292,13 +289,13 @@ def resample_to_fixed_interval(df):
     # Join aligned data to grid
     return grid.join(df, on=["MMSI", "ts"], how="left").orderBy("MMSI", "ts")
 
-def drop_rows_with_null_future_coords(df, horizon=20):
+def drop_rows_with_null_future_coords(df, horizon=120):
     """Drop rows where any future latitude or longitude column is null."""
     conditions = [F.col(f"future_lat_{i}").isNotNull() & F.col(f"future_lon_{i}").isNotNull() for i in range(1, horizon + 1)]
     combined_condition = reduce(lambda x, y: x & y, conditions)
     return df.filter(combined_condition)
 
-def add_future_lags(df, horizon=20):
+def add_future_lags(df, horizon=120):
     """Add future latitude and longitude columns for prediction targets."""
 
     # Drop existing timestamp_epoch if it exists to avoid ambiguity
@@ -325,7 +322,6 @@ def preprocess_all_files():
         return []
 
     all_data = []
-    output_files = []
 
     for path in csv_files:
 
@@ -340,6 +336,8 @@ def preprocess_all_files():
         df = filter_low_quality_mmsis(df)
         df = filter_outliers(df)
 
+        df = df.repartition("MMSI")
+
         df = resample_to_fixed_interval(df)
         df = interpolate_continuous_features(df)
         df = forward_fill_features(df)
@@ -353,17 +351,9 @@ def preprocess_all_files():
         # Saving processed data
         base = os.path.basename(path).replace("_fishing_labeled.csv", "_prod_ready.csv")
         output_file = write_single_output(df, base, output_folder)
-        output_files.append(output_file)
 
-    # Computes normalization stats based on training data
-    if all_data:
-        full_df = all_data[0]
-        for df_part in all_data[1:]:
-            full_df = full_df.unionByName(df_part)
-        if args.mode == 'train':
-            save_normalization_stats(full_df, "/ceph/project/gatehousep4/data/configs")
+    return None
 
-    return output_files
 
 if __name__ == '__main__':
     preprocess_all_files()
