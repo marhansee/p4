@@ -289,11 +289,16 @@ def is_heading_toward_cable(cables, current_pos, predicted_pos, angle_threshold=
     return False
 
 def main():
-    model_path = os.path.join(os.path.dirname(__file__),'models/dummy_classifier.onnx')
-    model = load_model(model_path)
+    classifier_path = os.path.join(os.path.dirname(__file__),'models/dummy_classifier.onnx')
+    forecaster_path = os.path.join(os.path.dirname(__file__),'models/dummy_forecaster.onnx')
+
+    classifier = load_model(classifier_path)
+    forecaster = load_model(forecaster)
 
     cable_data_path = os.path.join(os.path.dirname(__file__),'data/cable_positions.csv')
     cable_dict = load_cable_position_data(cable_data_path)
+
+    
 
     # TESTING WITH DUMMY
     current_position = (57.3569, 10.7360)
@@ -303,14 +308,30 @@ def main():
         (57.38000000, 10.60000000)
     ]
 
-    is_heading_toward_cable(
+    heading_toward = is_heading_toward_cable(
         cables=cable_dict,
         current_pos=current_position,
         predicted_pos=dummy_predicted_pos,
         angle_threshold=30
     )
 
-    interactive_map(cable_dict, vessel_position=current_position)
+    if heading_toward:
+        print("Vessel is heading toward a cable. Running trawling classifier...")
+
+        data = preprocess(trawling=True) # En eller anden preprocess pipeline
+
+        prediction = classifier.predict(data)
+        
+        if prediction == 1:
+            print("Trawling activity detected! Take action!")
+        else:
+            print("Vessel is approaching, but no trawling detected.")
+
+    else:
+        print("Vessel is not heading toward any cable.")
+
+
+    # interactive_map(cable_dict, vessel_position=current_position)
 
 if __name__ == '__main__':
     main()
