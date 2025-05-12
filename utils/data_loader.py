@@ -1,5 +1,7 @@
 import torch
 from torch.utils.data import Dataset, DataLoader
+from petastorm.pytorch import DataLoader
+from petastorm.reader import make_batch_reader
 
 class Forecasting_Dataloader(Dataset):
     def __init__(self, X, y, seq_length=10):
@@ -9,17 +11,16 @@ class Forecasting_Dataloader(Dataset):
         - y: Target values (Pandas DataFrame)
         - seq_length: Number of past timesteps to use
         """
-        self.X = torch.tensor(X.values, dtype=torch.float32)  # Assuming X is a Pandas DataFrame
-        self.y = torch.tensor(y.values, dtype=torch.float32)  # y contains pairs of lat and lon for each timestep
+        self.X = torch.tensor(X, dtype=torch.float32)  # Assuming X is a Pandas DataFrame
+        self.y = torch.tensor(y, dtype=torch.float32)  # y contains pairs of lat and lon for each timestep
         self.seq_length = seq_length
-        self.horizon = self.y.shape[1] // 2  # Number of pairs (lat/lon)
 
     def __len__(self):
-        return len(self.X) - (self.seq_length + self.horizon)
+        return len(self.X) - (self.seq_length)
 
     def __getitem__(self, idx):
         X_seq = self.X[idx:idx+self.seq_length]  # Sequence of input features
-        y_target = self.y[idx+self.seq_length:idx+self.seq_length+self.horizon]  # Target: Latitude and Longitude pairs
+        y_target = self.y[idx+self.seq_length-1]  # Target: Latitude and Longitude pairs
         return X_seq, y_target
     
 
@@ -36,3 +37,9 @@ class Classifier_Dataloader(Dataset):
         X_seq = self.X[idx:idx+self.seq_length]  # Sequence of features
         y_target = self.y[idx+self.seq_length-1]   # Single classification label
         return X_seq, y_target
+
+def get_sequence_data_loader(data_path, batch_size=32, num_epochs=1):
+    return DataLoader(
+        make_batch_reader(dataset_url=data_path, num_epochs=num_epochs),
+        batch_size=batch_size
+    )

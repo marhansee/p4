@@ -8,46 +8,27 @@ from torch.optim import Adam
 import torch.nn.functional as F
 import sys
 import warnings
-from sklearn.preprocessing import StandardScaler, MinMaxScaler
 import time
-import yaml
-import json
 import torch.distributed as dist
 from torch.nn.parallel import DistributedDataParallel as DDP
 from torch.optim.lr_scheduler import StepLR
+import numpy as np
+import pyarrow.parquet as pq
+import glob
 
 # Load model architectures
 from archs.lstm_forecaster import LSTMModel
 from archs.bigru_forecast import BiGRUModel
 from archs.cnn_forecast import CNN1DForecaster
 
+# Load utils
+from utils.train_utils import load_config_file, load_scaler_json, \
+    load_data, scale_data
+from utils.data_loader import Forecasting_Dataloader
+
 warnings.filterwarnings('ignore')
 
-def load_config_file(file_path):
-    if not os.path.exists(file_path):
-        print(f"File not found: {file_path}")
-        sys.exit(1)
-        # return None
-    
-    try:
-        with open(file_path, 'r') as file:
-            config = yaml.safe_load(file)
-        return config
-    except Exception as e:
-        print(f"Unexpected error: {e}")
 
-def load_scaler_json(file_path):
-    if not os.path.exists(file_path):
-        print(f"File not found: {file_path}")
-        sys.exit(1)
-        # return None
-    
-    try:
-        with open(file_path, 'r') as file:
-            scaler = json.load(file)
-        return scaler
-    except Exception as e:
-        print(f"Unexpected error: {e}")
 
 
 def train(model, device, train_loader, optimizer, scheduler, epoch, scaler):
@@ -123,13 +104,9 @@ def evaluate(model, device, test_loader):
 
     return avg_mae_lat, avg_mae_lon, avg_inference_time
 
-### MANGLER!!!!
-def scale_data(scaler):
-    pass
-
-
 
 def main():
+
     # Load config
     config_path = os.path.join(os.path.dirname(__file__),'train_config.yaml')
     config = load_config_file(config_path)
@@ -143,31 +120,47 @@ def main():
     os.makedirs(f"snapshots/forecast/{config['model_name']}", exist_ok=True)
 
     # Load data
-    data_path = os.path.join(os.path.dirname(__file__),'data/Trajectory_IDs.csv')
+    train_data_folder_path = os.path.join(os.path.dirname(__file__), 'train_data')
+    train_parquet_files = glob.glob(os.path.join(train_data_folder_path, '*.parquet'))
+    val_data_folder_path = os.path.join(os.path.dirname(__file__), 'val_data')
+    val_parquet_files = glob.glob(os.path.join(train_data_folder_path, '*.parquet'))
 
-    # MANGLER: Load data
-
+    input_features = ['timestamp_epoch', 'MMSI', 'Latitude', 'Longitude', 'ROT', 'SOG', 'COG', 'Heading', 
+                      'Width', 'Length', 'Draught']
+    features_to_scale = [feature for feature in input_features if feature not in ['timestamp_epoch', 'MMSI']]
+    target_features = [f'future_lat{i}' for i in range(1, 21)]
     
+    X_train, y_train = load_data(
+        parquet_files=train_parquet_files,
+        input_features=input_features,
+        target_columns=target_features
+    )
 
-    # MÅSKE: Drop features
+    X_val, y_val = load_data(
+        parquet_files=val_parquet_files,
+        input_features=input_features,
+        target_columns=target_features
+    )
 
-    # MANGLER: Definer input og target
+    # Scale input features
+    X_train_scaled = scale_data(scaler, X_train, features_to_scale)
+    X_val_scaled = scale_data(scaler, X_val, features_to_scale)
 
-    # MANGLER: SCale features
-
-
+    # Drop timestamp and MMSI
+    X_train_scaled = np.delete(X_train_scaled, ['MMSI','timestamp_epoch'], axis=1)
+    X_val_scaled = np.delete(X_val_scaled, ['MMSI','timestamp_epoch'], axis=1)
+   
     # Load datasets
-    train_dataset = TimeSeriesDataset(
+    train_dataset = Forecasting_Dataloader(
         X=X_train_scaled,
         y=y_train,
-        seq_length=config['train']['seq_length'],
-        horizon=horizon
+        seq_length=config['arch_param']['seq_len'],
     )
-    val_dataset = TimeSeriesDataset(
+
+    val_dataset = Forecasting_Dataloader(
         X=X_val_scaled,
         y=y_val,
-        seq_length=config['train']['seq_length'],
-        horizon=horizon
+        seq_length=config['arch_param']['seq_len'],
     )
 
     # Load dataloaders
@@ -206,7 +199,7 @@ def main():
             num_layers=config['arch_param']['num_layers'],
             output_seq_len=config['arch_param']['output_seq_len'],
             output_size=config['arch_param']['output_size'],
-            dropout_prop=config['arch_param']['dropout_prop']
+            dropout_prop=config['train']['dropout_prop']
         ).to(device_id)
     elif config['model_name'].lower() == 'bigru':
         model = BiGRUModel(
@@ -215,7 +208,7 @@ def main():
             num_layers=config['arch_param']['num_layers'],
             output_seq_len=config['arch_param']['output_seq_len'],
             output_size=config['arch_param']['output_size'],
-            dropout_prop=config['arch_param']['dropout_prop']
+            dropout_prop=config['train']['dropout_prop']
         ).to(device_id)
     elif config['model_name'].lower() == '1dcnn':
         model = CNN1DForecaster(

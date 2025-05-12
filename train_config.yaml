@@ -6,16 +6,15 @@ arch_param:
    num_layers: 2
    output_size: 2
    output_seq_len: 20
-   dropout_prop: 0.2
    out_channels: 64
    seq_len: 60
 train:
-   seq_length: 2000
    batch_size: 256
    num_epochs: 50
    seed: 42
    lr: 0.001
    num_workers: 2
+   dropout_prop: 0.2
 scheduler:
   step_size: 20
   gamma: 0.1
