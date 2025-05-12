@@ -5,6 +5,7 @@ arch_param:
    hidden_size: 64
    num_layers: 2
    output_size: 2
+   n_classes: 1
    output_seq_len: 20
    out_channels: 64
    seq_len: 60

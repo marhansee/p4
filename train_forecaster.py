@@ -39,7 +39,7 @@ def train(model, device, train_loader, optimizer, scheduler, epoch, scaler):
         optimizer.zero_grad()
 
         # Implement AMP
-        with torch.amp.autocast('cuda'):
+        with torch.cuda.amp.autocast():
             output = model(data)
             loss = F.mse_loss(output, target)
 
@@ -125,7 +125,10 @@ def main():
     val_data_folder_path = os.path.abspath('data/parquet')  # FIX PATH
     val_parquet_files = glob.glob(os.path.join(val_data_folder_path, '*.parquet'))
 
-    input_features = ['timestamp_epoch', 'MMSI', 'Latitude', 'Longitude', 'ROT', 'SOG', 'COG', 'Heading', 
+    val_parquet_files.sort()
+    val_parquet_files = val_parquet_files[:5] # Only select 5 of test set
+
+    input_features = ['Latitude', 'Longitude', 'ROT', 'SOG', 'COG', 'Heading', 
                       'Width', 'Length', 'Draught']
     features_to_scale = [feature for feature in input_features if feature not in ['timestamp_epoch', 'MMSI']]
     target_features = [f'future_lat{i}' for i in range(1, 21)]
@@ -147,8 +150,8 @@ def main():
     X_val_scaled = scale_data(scaler, X_val, features_to_scale)
 
     # Drop timestamp and MMSI
-    X_train_scaled = np.delete(X_train_scaled, ['MMSI','timestamp_epoch','trawling'], axis=1)
-    X_val_scaled = np.delete(X_val_scaled, ['MMSI','timestamp_epoch','trawling'], axis=1)
+    # X_train_scaled = np.delete(X_train_scaled, ['MMSI','timestamp_epoch','trawling'], axis=1)
+    # X_val_scaled = np.delete(X_val_scaled, ['MMSI','timestamp_epoch','trawling'], axis=1)
    
     # Load datasets
     train_dataset = Forecasting_Dataloader(
@@ -225,7 +228,7 @@ def main():
     ddp_model = DDP(model, device_ids=[device_id])
 
     # Define scaler for Automatic Mixed Precision
-    scaler = torch.amp.GradScaler('cuda')
+    scaler = torch.cuda.amp.GradScaler()
     
     # Define optimizer and lr scheduler
     optimizer = Adam(ddp_model.parameters(), lr=config['train']['lr'])

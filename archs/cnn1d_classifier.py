@@ -4,7 +4,7 @@ import torch
 from thop import profile
 
 class CNN1DClassifier(nn.Module):
-    def __init__(self, n_features, seq_len, out_channels=64, num_classes=2):
+    def __init__(self, n_features, seq_len, out_channels=64, num_classes=1):
         super(CNN1DClassifier, self).__init__()
 
         # Convolutional block using Sequential
@@ -34,6 +34,7 @@ class CNN1DClassifier(nn.Module):
         )
 
     def forward(self, x):
+        x = x.permute(0, 2, 1)
         x = self.feature_extractor(x)
         x = self.classifier(x)
         return x
@@ -42,11 +43,11 @@ def main():
     n_features = 10
     sequence_length = 60
     out_channel = 64
-    dummy_input = torch.randn(1,n_features, sequence_length) # 1-D CNN expects [batch, seq_length, 10]
-    model = CNN1DClassifier(n_features=n_features, seq_len=sequence_length, out_channels=out_channel)
+    dummy_input = torch.randn(1,sequence_length, n_features) # 1-D CNN expects [batch, seq_length, 10]
+    model = CNN1DClassifier(n_features=n_features, seq_len=sequence_length, out_channels=out_channel, num_classes=1)
     output = model(dummy_input)
 
-    print("Output shape:", output.shape)  # Expecting (1, 20, 2)
+    print("Output shape:", output.shape)  # Expecting (1, 1)
     
     flops, params = profile(model, inputs=(dummy_input,))
     print(f"FLOPs: {flops:,}")

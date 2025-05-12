@@ -51,8 +51,8 @@ def load_data(parquet_files, input_features, target_columns=None):
     y = np.vstack(all_target_data) if target_columns else None
 
 
-    X = pd.DataFrame(X, columns=input_features)
-    y = pd.DataFrame(y, columns=target_columns)
+    # X = pd.DataFrame(X, columns=input_features)
+    # y = pd.DataFrame(y, columns=target_columns)
     print("Processed and sorted the data!")
 
     return X, y
@@ -130,7 +130,7 @@ def main():
 
     # print(train_parquet_files)  # Debug print
 
-    input_features = ['timestamp_epoch', 'MMSI', 'Latitude', 'Longitude', 'ROT', 'SOG', 'COG', 'Heading', 
+    input_features = ['Latitude', 'Longitude', 'ROT', 'SOG', 'COG', 'Heading', 
                       'Width', 'Length', 'Draught']
     target_features = [f'future_lat_{i}' for i in range(1, 21)]
     

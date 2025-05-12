@@ -28,6 +28,7 @@ class CNN_LSTM(nn.Module):
                              num_layers=num_layers, batch_first=True)
         self.fc1 = nn.Linear(hidden_size, hidden_size)
         self.fc2 = nn.Linear(hidden_size, num_classes)
+        self.relu = nn.ReLU()
 
     def forward(self, x):
         #cnn takes input of shape (batch_size, channels, seq_len)
@@ -37,7 +38,9 @@ class CNN_LSTM(nn.Module):
         out = out.permute(0, 2, 1)
         out, _ = self.lstm(out)
         out = self.fc1(out[:, -1, :])
+        out = self.relu(out)
         out = self.fc2(out)
+
         return out
 
 def main():
@@ -45,10 +48,10 @@ def main():
     sequence_length = 60
     out_channel = 64
     dummy_input = torch.randn(1,sequence_length, n_features) # 1-D CNN expects [batch, seq_length, 10]
-    model = CNN_LSTM(n_features=n_features, out_channels=out_channel)
+    model = CNN_LSTM(n_features=n_features, out_channels=out_channel, num_classes=1)
     output = model(dummy_input)
 
-    print("Output shape:", output.shape)  # Expecting (1, 20, 2)
+    print("Output shape:", output.shape)  # Expecting (1, 1)
     
     flops, params = profile(model, inputs=(dummy_input,))
     print(f"FLOPs: {flops:,}")

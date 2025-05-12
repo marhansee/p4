@@ -26,7 +26,7 @@ from utils.data_loader import Classifier_Dataloader
 
 warnings.filterwarnings('ignore')
 
-def train(model, device, train_loader, optimizer, scheduler, epoch, scaler):
+def train(model, device, train_loader, optimizer, epoch, scaler):
     model.train()
     total_loss = 0
     correct = 0
@@ -36,36 +36,36 @@ def train(model, device, train_loader, optimizer, scheduler, epoch, scaler):
         data, target = data.to(device), target.to(device)
         optimizer.zero_grad()
 
-        # Implement AMP (Automatic Mixed Precision)
-        with torch.amp.autocast('cuda'):
-            output = model(data)  # Forward pass through the model
-            # Binary Cross Entropy loss (with logits)
-            loss = F.binary_cross_entropy_with_logits(output.squeeze(), target.float())
+        # AMP (Automatic Mixed Precision)
+        with torch.cuda.amp.autocast():
+            output = model(data)  # Forward pass (logits)
+            loss = F.binary_cross_entropy_with_logits(output, target.float())
 
-        # Scale gradients and apply backpropagation
+        # Scale loss, backprop, and update
         scaler.scale(loss).backward()
-
-        # Unscale gradients and update weights
         scaler.step(optimizer)
-
-        # Update scaler for mixed precision
         scaler.update()
 
         total_loss += loss.item()
 
-        # Track accuracy (for monitoring)
-        pred = torch.round(torch.sigmoid(output))  # Apply sigmoid to get probability, then round to 0 or 1
+        # Accuracy calculation (sigmoid + thresholding)
+        pred = torch.sigmoid(output)  
+        pred = (pred > 0.5).float()  # Better than torch.round()
         correct += pred.eq(target.view_as(pred)).sum().item()
         num_samples += len(target)
 
-        if batch_idx % 500 == 0:
+        if batch_idx % 100 == 0:
             print(f'Train Epoch: {epoch} [{batch_idx * len(data)}/{len(train_loader.dataset)} ({100. * batch_idx / len(train_loader):.0f}%)]\tLoss: {loss.item():.6f}')
 
-    epoch_loss = total_loss / len(train_loader)  # Average loss over all batches
+    # Average loss & accuracy
+    epoch_loss = total_loss / num_samples  # More precise than len(train_loader)
+    train_accuracy = 100. * correct / num_samples
 
-    # Log the train loss and accuracy to WandB
-    wandb.log({"Epoch Train Loss": epoch_loss})
-
+    # Log to wandb
+    wandb.log({
+        "Epoch Train Loss": epoch_loss,
+        "Epoch Train Accuracy": train_accuracy  # Added missing metric
+    })
 
 def evaluate(model, device, test_loader):
     model.eval()  # Set the model to evaluation mode
@@ -86,10 +86,12 @@ def evaluate(model, device, test_loader):
             total_inference_time += batch_inference_time
 
             # Binary cross-entropy loss for binary classification
-            test_loss += F.binary_cross_entropy_with_logits(output.squeeze(), target.float(), reduction='sum').item()
+            test_loss += F.binary_cross_entropy_with_logits(output, target.float(), reduction='sum').item()
+
             
             # Predictions: output is logits, so we apply a sigmoid to get probabilities
-            pred = torch.round(torch.sigmoid(output))  # Sigmoid to get probability, then round to 0 or 1
+            pred = torch.sigmoid(output)  
+            pred = torch.round(pred)
             correct += pred.eq(target.view_as(pred)).sum().item()
             num_samples += len(target)
 
@@ -106,11 +108,11 @@ def evaluate(model, device, test_loader):
     avg_inference_time = (total_inference_time / num_samples) * 1000  # ms
 
     print(f'\nTest set: Average Loss: {test_loss:.4f}, Accuracy: {accuracy:.2f}%, F1 Score: {f1:.4f}')
+    print(f'Average inference time (ms): {avg_inference_time}')
     wandb.log({
         "Eval Loss": test_loss,
         "Eval Accuracy": accuracy,
-        "Eval F1 Score": f1,
-        "Avg Inference Time (ms)": avg_inference_time
+        "Eval F1 Score": f1
     })
 
     return test_loss, accuracy, f1, avg_inference_time
@@ -137,7 +139,10 @@ def main():
     val_data_folder_path = os.path.abspath('data/parquet')  # FIX PATH
     val_parquet_files = glob.glob(os.path.join(val_data_folder_path, '*.parquet'))
 
-    input_features = ['timestamp_epoch', 'MMSI', 'Latitude', 'Longitude', 'ROT', 'SOG', 'COG', 'Heading', 
+    val_parquet_files.sort()
+    val_parquet_files = val_parquet_files[:5] # Only select 5 of test set
+
+    input_features = ['Latitude', 'Longitude', 'ROT', 'SOG', 'COG', 'Heading', 
                       'Width', 'Length', 'Draught']
     features_to_scale = [feature for feature in input_features if feature not in ['timestamp_epoch', 'MMSI']]
     target_feature = ['trawling']
@@ -159,8 +164,8 @@ def main():
     X_val_scaled = scale_data(scaler, X_val, features_to_scale)
 
     # Drop timestamp and MMSI
-    X_train_scaled = np.delete(X_train_scaled, ['MMSI','timestamp_epoch','trawling'], axis=1)
-    X_val_scaled = np.delete(X_val_scaled, ['MMSI','timestamp_epoch','trawling'], axis=1)
+    # X_train_scaled = np.delete(X_train_scaled, ['MMSI','timestamp_epoch','trawling'], axis=1)
+    # X_val_scaled = np.delete(X_val_scaled, ['MMSI','timestamp_epoch','trawling'], axis=1)
 
     train_dataset = Classifier_Dataloader(
         X=X_train_scaled,
@@ -208,14 +213,14 @@ def main():
             out_channels=config['arch_param']['out_channels'],
             hidden_size=config['arch_param']['hidden_size'],
             num_layers=config['arch_param']['num_layers'],
-            num_classes=config['arch_param']['output_size']
+            num_classes=config['arch_param']['n_classes']
         )
     elif config['model_name'].lower() == '1dcnn':
         model = CNN1DClassifier(
             n_features=config['arch_param']['n_features'],
             seq_len=config['arch_param']['seq_len'],
             out_channels=config['arch_param']['out_channels'],
-            num_classes=config['arch_param']['output_size']
+            num_classes=config['arch_param']['n_classes']
         )
     elif config['model_name'].lower() == 'lstm':
         model = LSTMClassifier(
@@ -223,16 +228,19 @@ def main():
             hidden_size=config['arch_param']['hidden_size'],
             num_layers=config['arch_param']['num_layers'],
             dropout_prop=config['train']['dropout_prop'],
-            num_classes=config['arch_param']['output_size']
+            num_classes=config['arch_param']['n_classes']
         )
     else:
         raise AssertionError('Model must be either "hybrid", "1dcnn", "lstm"')
     
+
+    model = model.to(torch.device("cuda", device_id))
+
     # Wrap model in DDP
     ddp_model = DDP(model, device_ids=[device_id])
 
     # Define scaler for Automatic Mixed Precision
-    scaler = torch.amp.GradScaler('cuda')
+    scaler = torch.cuda.amp.GradScaler()
     
     # Define optimizer and lr scheduler
     optimizer = Adam(ddp_model.parameters(), lr=config['train']['lr'])
@@ -246,8 +254,8 @@ def main():
     print(experiment_name)
 
     # Define folder path to save the results and weights
-    results_path = os.path.join(f"forecast_results/{config['model_name']}", f"{experiment_name}.txt")
-    weight_path = os.path.join(f"snapshots/forecast/{config['model_name']}", f"{experiment_name}.pth")
+    results_path = os.path.join(f"classification_results/{config['model_name']}", f"{experiment_name}.txt")
+    weight_path = os.path.join(f"snapshots/classification/{config['model_name']}", f"{experiment_name}.pth")
 
 
     # Training loop
@@ -260,7 +268,6 @@ def main():
             device=device_id,
             train_loader=train_loader,
             optimizer=optimizer,
-            scheduler=scheduler,
             epoch=epoch,
             scaler=scaler,
         )
