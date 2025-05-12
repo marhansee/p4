@@ -1,6 +1,4 @@
 import os
-import shutil
-import glob
 import json
 import argparse
 from pyspark.sql import SparkSession, functions as F
@@ -30,7 +28,7 @@ spark = SparkSession.builder \
     .appName(f"AIS Labeling ({args.mode})") \
     .config("spark.sql.shuffle.partitions", "128") \
     .config("spark.local.dir", "/ceph/project/gatehousep4/data/petastorm_cache") \
-    .config("spark.driver.memory", "200") \
+    .config("spark.driver.memory", "180g") \
     .getOrCreate()
 spark.sparkContext.setLogLevel("ERROR")
 
@@ -289,13 +287,13 @@ def resample_to_fixed_interval(df):
     # Join aligned data to grid
     return grid.join(df, on=["MMSI", "ts"], how="left").orderBy("MMSI", "ts")
 
-def drop_rows_with_null_future_coords(df, horizon=120):
+def drop_rows_with_null_future_coords(df, horizon=20):
     """Drop rows where any future latitude or longitude column is null."""
     conditions = [F.col(f"future_lat_{i}").isNotNull() & F.col(f"future_lon_{i}").isNotNull() for i in range(1, horizon + 1)]
     combined_condition = reduce(lambda x, y: x & y, conditions)
     return df.filter(combined_condition)
 
-def add_future_lags(df, horizon=120):
+def add_future_lags(df, horizon=20):
     """Add future latitude and longitude columns for prediction targets."""
 
     # Drop existing timestamp_epoch if it exists to avoid ambiguity
@@ -312,16 +310,18 @@ def add_future_lags(df, horizon=120):
         df = df.withColumn(f"future_lat_{i}", F.lead("Latitude", i).over(w))
         df = df.withColumn(f"future_lon_{i}", F.lead("Longitude", i).over(w))
 
+    df = df.cache()
+    df.count()
+
     return df
 
 def preprocess_all_files():
     input_folder, output_folder = get_paths()
-    csv_files = glob.glob(os.path.join(input_folder, "*.csv"))
+    all_files = os.listdir(input_folder)
+    csv_files = [os.path.join(input_folder, f) for f in all_files if f.endswith(".csv")]
     if not csv_files:
         print("No CSV files found.")
         return []
-
-    all_data = []
 
     for path in csv_files:
 
@@ -345,8 +345,6 @@ def preprocess_all_files():
         df = clamp_features(df)
         df = add_future_lags(df)
         df = drop_rows_with_null_future_coords(df)
-
-        all_data.append(df)
 
         # Saving processed data
         base = os.path.basename(path).replace("_fishing_labeled.csv", "_prod_ready.csv")
