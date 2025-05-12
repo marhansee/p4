@@ -11,7 +11,7 @@ class Forecasting_Dataloader(Dataset):
         - y: Target values (Pandas DataFrame)
         - seq_length: Number of past timesteps to use
         """
-        self.X = torch.tensor(X, dtype=torch.float32)  # Assuming X is a Pandas DataFrame
+        self.X = torch.tensor(X, dtype=torch.float32)  # Assuming X is a NumPy array
         self.y = torch.tensor(y, dtype=torch.float32)  # y contains pairs of lat and lon for each timestep
         self.seq_length = seq_length
 
@@ -38,8 +38,8 @@ class Classifier_Dataloader(Dataset):
         y_target = self.y[idx+self.seq_length-1]   # Single classification label
         return X_seq, y_target
 
-def get_sequence_data_loader(data_path, batch_size=32, num_epochs=1):
-    return DataLoader(
-        make_batch_reader(dataset_url=data_path, num_epochs=num_epochs),
-        batch_size=batch_size
-    )
+# def get_sequence_data_loader(data_path, batch_size=32, num_epochs=1):
+#     return DataLoader(
+#         make_batch_reader(dataset_url=data_path, num_epochs=num_epochs),
+#         batch_size=batch_size
+#     )
