@@ -4,24 +4,26 @@ from torchsummary import summary
 from thop import profile
 
 class BiGRUModel(nn.Module):
-    def __init__(self, input_dim, hidden_dim, layer_dim, output_seq_len=20, dropout_prob=0.2):
+    def __init__(self, n_features, hidden_size, num_layers, output_seq_len=20, output_size=2, dropout_prob=0.2):
         super(BiGRUModel, self).__init__()
 
-        self.layer_dim = layer_dim
-        self.hidden_dim = hidden_dim
+        self.n_features = n_features
+        self.hidden_size = hidden_size
+        self.num_layers = num_layers
         self.output_seq_len = output_seq_len
+        self.output_size = output_size
 
         self.gru = nn.GRU(
-            input_dim, hidden_dim, layer_dim,
+            self.n_features, self.hidden_size, self.num_layers,
             batch_first=True, dropout=dropout_prob,
             bidirectional=True
         )
 
         # Fully connected layer for each timestep
-        self.fc = nn.Linear(hidden_dim * 2, 2) # output two features
+        self.fc = nn.Linear(hidden_size * 2, output_size) # output two features
 
     def forward(self, x):
-        h0 = torch.zeros(self.layer_dim * 2, x.size(0), self.hidden_dim, device=x.device)
+        h0 = torch.zeros(self.num_layers * 2, x.size(0), self.hidden_size, device=x.device)
 
         out, _ = self.gru(x, h0)
 
@@ -37,8 +39,8 @@ def main():
     sequence_length = 60
     output_seq_length = 20
     dummy_input = torch.randn(1, sequence_length, n_features)
-    model = BiGRUModel(input_dim=n_features, hidden_dim=64,dropout_prob=0.2, 
-                       layer_dim=2, output_seq_len=output_seq_length)
+    model = BiGRUModel(n_features=n_features, hidden_size=64,dropout_prob=0.2, 
+                       num_layers=2, output_seq_len=output_seq_length)
 
     output = model(dummy_input)
 

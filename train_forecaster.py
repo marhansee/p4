@@ -1,0 +1,297 @@
+
+import torch
+import wandb
+import os
+from torch.utils.data import DataLoader
+import torch.nn as nn
+from torch.optim import Adam
+import torch.nn.functional as F
+import sys
+import warnings
+from sklearn.preprocessing import StandardScaler, MinMaxScaler
+import time
+import yaml
+import torch.distributed as dist
+from torch.nn.parallel import DistributedDataParallel as DDP
+from torch.optim.lr_scheduler import StepLR
+
+# Load model architectures
+from archs.lstm_forecaster import LSTMModel
+from archs.bigru_forecast import BiGRUModel
+from archs.cnn_forecast import CNN1DForecaster
+
+warnings.filterwarnings('ignore')
+
+def load_config_file(file_path):
+    if not os.path.exists(file_path):
+        print(f"File not found: {file_path}")
+        sys.exit(1)
+        # return None
+    
+    try:
+        with open(file_path, 'r') as file:
+            config = yaml.safe_load(file)
+        return config
+    except Exception as e:
+        print(f"Unexpected error: {e}")
+
+
+def train(model, device, train_loader, optimizer, scheduler, epoch, scaler):
+    model.train()
+    total_loss = 0
+    for batch_idx, (data, target) in enumerate(train_loader):
+        data, target = data.to(device), target.to(device)
+        optimizer.zero_grad()
+
+        # Implement AMP
+        with torch.amp.autocast('cuda'):
+            output = model(data)
+            loss = F.mse_loss(output, target)
+
+        # Scale gradients and apply backprop
+        scaler.scale(loss).backward()
+
+        # Unscale gradients and update weights
+        scaler.step(optimizer)
+
+        # Update scaler
+        scaler.update()
+
+
+        total_loss += loss.item()
+
+        if batch_idx % 500 == 0:
+            print('Train Epoch: {} [{}/{} ({:.0f}%)]\tLoss: {:.6f}'.format(
+                epoch, batch_idx * len(data), len(train_loader.dataset),
+                100. * batch_idx / len(train_loader), loss.item()))
+
+    epoch_loss = total_loss / len(train_loader)
+
+    # Log the train loss
+    wandb.log({"Epoch Train Loss": epoch_loss, "Epoch": epoch})
+    
+
+def evaluate(model, device, test_loader):
+    model.eval()
+    total_mae_lat = 0
+    total_mae_lon = 0
+    num_samples = 0
+    total_inference_time = 0
+
+    with torch.no_grad():
+        for data, target in test_loader:
+            data, target = data.to(device), target.to(device)
+            start_time = time.time()
+            output = model(data)
+            batch_inference_time = time.time() - start_time
+            total_inference_time += batch_inference_time
+
+            lat_target, lon_target = target[:, :, 0], target[:, :, 1] # output shape: [batch, 20, 2]
+            lat_output, lon_output = output[:, :, 0], output[:, :, 1]
+
+            lat_mae = F.l1_loss(lat_output, lat_target, reduction='sum').item()
+            lon_mae = F.l1_loss(lon_output, lon_target, reduction='sum').item()
+
+            total_mae_lat += lat_mae
+            total_mae_lon += lon_mae
+            num_samples += target.shape[0] * target.shape[1] # recall output shape: [batch, 20, 2]
+
+    avg_mae_lat = total_mae_lat / num_samples
+    avg_mae_lon = total_mae_lon / num_samples
+    avg_inference_time = (total_inference_time / num_samples) * 1000  # ms
+
+    print(f'\nTest set: Average MAE Loss for Latitude: {avg_mae_lat:.4f}, Average MAE Loss for Longitude: {avg_mae_lon:.4f}\n')
+    wandb.log({
+        "Eval MAE Loss Latitude": avg_mae_lat,
+        "Eval MAE Loss Longitude": avg_mae_lon,
+        "Avg Inference Time (ms)": avg_inference_time
+    })
+
+    return avg_mae_lat, avg_mae_lon, avg_inference_time
+
+def scale_data(X_train, X_val, X_test):
+    scaler = StandardScaler()  # You can also use MinMaxScaler() for different scaling
+
+
+    X_train_scaled = scaler.fit_transform(X_train)
+    X_val_scaled = scaler.transform(X_val)  
+    X_test_scaled = scaler.transform(X_test)  
+    
+    return X_train_scaled, X_val_scaled, X_test_scaled
+
+
+
+def main():
+    # Load config
+    config_path = os.path.join(os.path.dirname(__file__),'train_config.yaml')
+    config = load_config_file(config_path)
+
+    # Make folders for results and snapshots
+    os.makedirs(f"forecast_results/{config['model_name']}", exist_ok=True)
+    os.makedirs(f"snapshots/forecast/{config['model_name']}", exist_ok=True)
+
+    # Load data
+    data_path = os.path.join(os.path.dirname(__file__),'data/Trajectory_IDs.csv')
+
+    # Split data
+    train_df, val_df, test_df = split_data(data_path, random_state=42)
+
+    # Add degradations (specified in YAML-file)
+    train_df, val_df, test_df = add_degradations(
+        config=config,
+        train_df=train_df,
+        val_df=val_df,
+        test_df=test_df
+    )
+    
+
+    # # Drop features
+    # train_df.drop(['id','label'],axis=1, inplace=True)
+    # val_df.drop(['id', 'label'], axis=1, inplace=True)
+    # test_df.drop(['id','label'], axis=1, inplace=True)
+
+    # Define data settings and preprocess data
+    X_train, X_val, X_test, y_train, y_val, y_test = \
+        preprocess_data(train_df, val_df, test_df, 
+                        num_lags=config['lags'], 
+                        horizon=horizon)
+
+    # Scale data
+    X_train_scaled, X_val_scaled, X_test_scaled = scale_data(X_train, X_val, X_test)
+    
+
+    # Load datasets
+    train_dataset = TimeSeriesDataset(
+        X=X_train_scaled,
+        y=y_train,
+        seq_length=config['train']['seq_length'],
+        horizon=horizon
+    )
+    val_dataset = TimeSeriesDataset(
+        X=X_val_scaled,
+        y=y_val,
+        seq_length=config['train']['seq_length'],
+        horizon=horizon
+    )
+
+    # Load dataloaders
+    train_loader = DataLoader(dataset=train_dataset, 
+                              batch_size=config['train']['batch_size'],
+                              shuffle=True,
+                              num_workers=config['train']['num_workers'],
+                              pin_memory=True)
+                              
+    val_loader = DataLoader(dataset=val_dataset,
+                            batch_size=config['train']['batch_size'],
+                            shuffle=False,
+                            num_workers=config['train']['num_workers'],
+                            pin_memory=True)
+    
+    # Initialize WandB
+    wandb.login()
+    wandb.init(project=config['wandb']['project'], config=config)
+
+    torch.manual_seed(config['train']['seed'])
+
+    # Initialize ranks and process groups
+    torch.cuda.set_device(int(os.environ[config['ddp']['set_device']]))
+    dist.init_process_group(config['ddp']['process_group'])
+    rank = dist.get_rank()
+
+    # Define device ID and load model with device
+    device_id = rank % torch.cuda.device_count()
+
+    # Select model based on configuration
+    if config['model_name'].lower() == 'lstm':
+        # Initialize model
+        model = LSTMModel(
+            n_features=config['arch_param']['n_features'],
+            hidden_size=config['arch_param']['hidden_size'],
+            num_layers=config['arch_param']['num_layers'],
+            output_seq_len=config['arch_param']['output_seq_len'],
+            output_size=config['arch_param']['output_size'],
+            dropout_prop=config['arch_param']['dropout_prop']
+        ).to(device_id)
+    elif config['model_name'].lower() == 'bigru':
+        model = BiGRUModel(
+            n_features=config['arch_param']['n_features'],
+            hidden_size=config['arch_param']['hidden_size'],
+            num_layers=config['arch_param']['num_layers'],
+            output_seq_len=config['arch_param']['output_seq_len'],
+            output_size=config['arch_param']['output_size'],
+            dropout_prop=config['arch_param']['dropout_prop']
+        ).to(device_id)
+    elif config['model_name'].lower() == '1dcnn':
+        model = CNN1DForecaster(
+            n_features=config['arch_param']['n_features'],
+            seq_len=config['arch_param']['seq_len'],
+            out_channels=config['arch_param']['out_channels'],
+            output_size=config['arch_param']['output_size'],
+            output_seq_len=config['arch_param']['output_seq_len']
+        ).to(device_id)
+    else:
+        raise AssertionError('Model must be either "lstm", "bigru", "1dcnn"')
+    
+    # Wrap model in DDP
+    ddp_model = DDP(model, device_ids=[device_id])
+
+    # Define scaler for Automatic Mixed Precision
+    scaler = torch.amp.GradScaler('cuda')
+    
+    # Define optimizer and lr scheduler
+    optimizer = Adam(ddp_model.parameters(), lr=config['train']['lr'])
+    scheduler = StepLR(
+        optimizer=optimizer,
+        step_size=config['scheduler']['step_size'],
+        gamma=config['scheduler']['gamma'])
+
+    # Format experiment name
+    experiment_name = f"{config['model_name']}_{config['experiment_name']}"
+    print(experiment_name)
+
+    # Define folder path to save the results and weights
+    results_path = os.path.join(f"forecast_results/{config['model_name']}", f"{experiment_name}.txt")
+    weight_path = os.path.join(f"snapshots/forecast/{config['model_name']}", f"{experiment_name}.pth")
+
+
+    # Training loop
+    print("Initializing training...")
+
+    best_val_loss = float('inf')
+    for epoch in range(1, config['train']['num_epochs']+1):
+        train(
+            model=ddp_model,
+            device=device_id,
+            train_loader=train_loader,
+            optimizer=optimizer,
+            scheduler=scheduler,
+            epoch=epoch,
+            scaler=scaler,
+        )
+
+        avg_mae_lat, avg_mae_lon, avg_inference_time = evaluate(
+            model=ddp_model, 
+            device=device_id, 
+            test_loader=val_loader
+        )
+
+        val_loss = avg_mae_lat + avg_mae_lon  
+
+        if val_loss < best_val_loss:
+            best_val_loss = val_loss
+            torch.save(model.state_dict(), weight_path)  # Save model weights
+            print(f"New best model saved with Validation Loss: {best_val_loss:.4f}")
+
+            print("Writing results")
+            with open(results_path, "w") as f:  # Overwrite file to keep only the best result
+                f.write(f"Experiment name: {experiment_name}\n")
+                f.write(f"MAE - Lat: {avg_mae_lat:.4f}, Long: {avg_mae_lon:.4f}\n")
+                f.write(f"Epoch: {epoch}\n")
+                f.write(f"Inference time (ms): {avg_inference_time:.2f}\n")
+
+    print("Completed training.")
+
+
+
+if __name__ == '__main__':
+    main()

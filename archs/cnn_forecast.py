@@ -5,9 +5,11 @@ from torchsummary import summary
 from thop import profile
 
 class CNN1DForecaster(nn.Module):
-    def __init__(self, n_features, seq_len, out_channels=64):
+    def __init__(self, n_features, seq_len, out_channels=64, output_size=2, output_seq_len=20):
         super(CNN1DForecaster, self).__init__()
-
+        self.output_size = output_size
+        self.output_seq_len = output_seq_len
+        
         # Convolutional block using Sequential
         self.feature_extractor = nn.Sequential(
             nn.Conv1d(in_channels=n_features, out_channels=out_channels, 
@@ -31,13 +33,13 @@ class CNN1DForecaster(nn.Module):
             nn.Flatten(),
             nn.Linear(self.flattened_size, out_channels),
             nn.ReLU(),
-            nn.Linear(out_channels, 2 * 20)
+            nn.Linear(out_channels, self.output_size * self.output_seq_len)
         )
 
     def forward(self, x):
         x = self.feature_extractor(x)
         x = self.classifier(x)
-        x = x.view(x.size(0), 20, 2)  # Output shape: (batch, samples, features)
+        x = x.view(x.size(0), self.output_seq_len, self.output_size)  # Output shape: (batch, samples, features)
         return x
 
     

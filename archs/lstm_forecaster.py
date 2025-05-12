@@ -4,14 +4,21 @@ from thop import profile
 from torchsummary import summary
 
 class LSTMModel(nn.Module):
-    def __init__(self, input_size, hidden_size, num_layers, output_seq_len=20, output_size=2):
+    def __init__(self, n_features, hidden_size, num_layers, output_seq_len=20, output_size=2, dropout_prop=0.2):
         super(LSTMModel, self).__init__()
+        self.n_features = n_features
         self.hidden_size = hidden_size
         self.num_layers = num_layers
         self.output_seq_len = output_seq_len
+        self.output_size = output_size
 
-        self.lstm = nn.LSTM(input_size, hidden_size, num_layers, batch_first=True, dropout=0.2)
-        self.fc = nn.Linear(hidden_size, output_size)
+
+        self.lstm = nn.LSTM(
+            self.n_features, self.hidden_size, self.num_layers, 
+            batch_first=True, 
+            dropout=dropout_prop
+        )
+        self.fc = nn.Linear(self.hidden_size, self.output_size)
 
     def forward(self, x):
         batch_size = x.size(0)
@@ -28,7 +35,7 @@ def main():
     sequence_length = 60
     output_sequence_length = 20
     dummy_input = torch.randn(1, sequence_length, n_features)
-    model = LSTMModel(input_size=n_features, hidden_size=64, num_layers=2, output_size=2, output_seq_len=output_sequence_length)
+    model = LSTMModel(n_features=n_features, hidden_size=64, num_layers=2, output_size=2, output_seq_len=output_sequence_length)
     output = model(dummy_input)
 
     print("Output shape:", output.shape)  # Expecting (1, 20, 2)
