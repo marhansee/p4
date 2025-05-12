@@ -4,6 +4,11 @@ import os
 import sys
 import json
 import yaml
+import glob
+import pandas as pd
+import psutil
+import torch
+
 
 def load_data(parquet_files, input_features, target_columns=None):
     """
@@ -45,6 +50,9 @@ def load_data(parquet_files, input_features, target_columns=None):
     X = np.vstack(all_features)
     y = np.vstack(all_target_data) if target_columns else None
 
+
+    # X = pd.DataFrame(X, columns=input_features)
+    # y = pd.DataFrame(y, columns=target_columns)
     print("Processed and sorted the data!")
 
     return X, y
@@ -106,3 +114,60 @@ def scale_data(scaler, X_train, features_to_scale):
     print("Selected features have been scaled!")
 
     return X_train_scaled
+
+def print_memory_stats(device='cpu'):
+    print(f"\n[MEMORY USAGE]")
+    print(f"CPU RAM: {psutil.Process().memory_info().rss / 1024 ** 2:.2f} MB")
+    if device == 'cuda' and torch.cuda.is_available():
+        print(f"GPU VRAM: {torch.cuda.memory_allocated() / 1024 ** 2:.2f} MB")
+
+def main():
+    from data_loader import Forecasting_Dataloader
+    from torch.utils.data import DataLoader
+    # Load data
+    train_data_folder_path = os.path.abspath('data/parquet/')
+    train_parquet_files = glob.glob(os.path.join(train_data_folder_path, '*.parquet'))
+
+    # print(train_parquet_files)  # Debug print
+
+    input_features = ['timestamp_epoch', 'MMSI', 'Latitude', 'Longitude', 'ROT', 'SOG', 'COG', 'Heading', 
+                      'Width', 'Length', 'Draught']
+    target_features = [f'future_lat_{i}' for i in range(1, 21)]
+    
+    X_train, y_train = load_data(
+        parquet_files=train_parquet_files,
+        input_features=input_features,
+        target_columns=target_features
+    )
+
+    print_memory_stats()  # After loading
+    # print(X_train.head(5))
+
+    train_dataset = Forecasting_Dataloader(
+        X=X_train,
+        y=y_train,
+        seq_length=60
+    )
+
+    # Load dataloaders
+    train_loader = DataLoader(dataset=train_dataset, 
+                              batch_size=32,
+                              shuffle=True,
+                              num_workers=2,
+                              pin_memory=True)
+    
+    
+    print_memory_stats()  # After loading
+    for batch_idx, (data, target) in enumerate(train_loader):
+        data, target = data.to('cpu'), target.to('cpu')
+        # print(data)
+        # print(target)
+        print(f"Batch {batch_idx}")
+        print("Data shape:", data.shape)
+        print("Target shape:", target.shape)
+        print_memory_stats()  # After loading
+        if batch_idx == 1:
+            break  # Only inspect the first batch
+
+if __name__ == '__main__':
+    main()

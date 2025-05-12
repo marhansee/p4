@@ -1,7 +1,7 @@
 import torch
 from torch.utils.data import Dataset, DataLoader
-from petastorm.pytorch import DataLoader
-from petastorm.reader import make_batch_reader
+# from petastorm.pytorch import DataLoader
+# from petastorm.reader import make_batch_reader
 
 class Forecasting_Dataloader(Dataset):
     def __init__(self, X, y, seq_length=10):

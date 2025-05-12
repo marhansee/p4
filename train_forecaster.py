@@ -120,9 +120,9 @@ def main():
     os.makedirs(f"snapshots/forecast/{config['model_name']}", exist_ok=True)
 
     # Load data
-    train_data_folder_path = os.path.join(os.path.dirname(__file__), 'train_data')
+    train_data_folder_path = os.path.abspath('data/parquet') # FIX PATH
     train_parquet_files = glob.glob(os.path.join(train_data_folder_path, '*.parquet'))
-    val_data_folder_path = os.path.join(os.path.dirname(__file__), 'val_data')
+    val_data_folder_path = os.path.abspath('data/parquet')  # FIX PATH
     val_parquet_files = glob.glob(os.path.join(val_data_folder_path, '*.parquet'))
 
     input_features = ['timestamp_epoch', 'MMSI', 'Latitude', 'Longitude', 'ROT', 'SOG', 'COG', 'Heading', 
