@@ -123,7 +123,7 @@ def main():
     train_data_folder_path = os.path.join(os.path.dirname(__file__), 'train_data')
     train_parquet_files = glob.glob(os.path.join(train_data_folder_path, '*.parquet'))
     val_data_folder_path = os.path.join(os.path.dirname(__file__), 'val_data')
-    val_parquet_files = glob.glob(os.path.join(train_data_folder_path, '*.parquet'))
+    val_parquet_files = glob.glob(os.path.join(val_data_folder_path, '*.parquet'))
 
     input_features = ['timestamp_epoch', 'MMSI', 'Latitude', 'Longitude', 'ROT', 'SOG', 'COG', 'Heading', 
                       'Width', 'Length', 'Draught']
@@ -147,8 +147,8 @@ def main():
     X_val_scaled = scale_data(scaler, X_val, features_to_scale)
 
     # Drop timestamp and MMSI
-    X_train_scaled = np.delete(X_train_scaled, ['MMSI','timestamp_epoch'], axis=1)
-    X_val_scaled = np.delete(X_val_scaled, ['MMSI','timestamp_epoch'], axis=1)
+    X_train_scaled = np.delete(X_train_scaled, ['MMSI','timestamp_epoch','trawling'], axis=1)
+    X_val_scaled = np.delete(X_val_scaled, ['MMSI','timestamp_epoch','trawling'], axis=1)
    
     # Load datasets
     train_dataset = Forecasting_Dataloader(

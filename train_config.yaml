@@ -1,4 +1,4 @@
-model_name: 'lstm' # lstm, bigru, 1dcnn
+model_name: 'lstm' # lstm, bigru, 1dcnn, hybrid
 experiment_name: 'TEST' # name to save as file
 arch_param:
    n_features: 10
