@@ -11,7 +11,6 @@ import warnings
 from sklearn.preprocessing import StandardScaler, MinMaxScaler
 import time
 import yaml
-import json
 import torch.distributed as dist
 from torch.nn.parallel import DistributedDataParallel as DDP
 from torch.optim.lr_scheduler import StepLR
@@ -33,19 +32,6 @@ def load_config_file(file_path):
         with open(file_path, 'r') as file:
             config = yaml.safe_load(file)
         return config
-    except Exception as e:
-        print(f"Unexpected error: {e}")
-
-def load_scaler_json(file_path):
-    if not os.path.exists(file_path):
-        print(f"File not found: {file_path}")
-        sys.exit(1)
-        # return None
-    
-    try:
-        with open(file_path, 'r') as file:
-            scaler = json.load(file)
-        return scaler
     except Exception as e:
         print(f"Unexpected error: {e}")
 
@@ -124,7 +110,7 @@ def evaluate(model, device, test_loader):
     return avg_mae_lat, avg_mae_lon, avg_inference_time
 
 ### MANGLER!!!!
-def scale_data(scaler):
+def scale_data(X_train, X_val, X_test):
     pass
 
 
@@ -133,10 +119,6 @@ def main():
     # Load config
     config_path = os.path.join(os.path.dirname(__file__),'train_config.yaml')
     config = load_config_file(config_path)
-
-    # Load scaler [FIX PATH]
-    scaler_path = os.path.join(os.path.dirname(__file__),'metadata.json')
-    scaler = load_scaler_json(scaler_path)
 
     # Make folders for results and snapshots
     os.makedirs(f"forecast_results/{config['model_name']}", exist_ok=True)
@@ -154,7 +136,7 @@ def main():
     # MANGLER: Definer input og target
 
     # MANGLER: SCale features
-
+    
 
     # Load datasets
     train_dataset = TimeSeriesDataset(

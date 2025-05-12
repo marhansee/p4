@@ -4,7 +4,7 @@ import torch
 from thop import profile
 
 class CNN1DClassifier(nn.Module):
-    def __init__(self, n_features, seq_len, out_channels=64):
+    def __init__(self, n_features, seq_len, out_channels=64, num_classes=2):
         super(CNN1DClassifier, self).__init__()
 
         # Convolutional block using Sequential
@@ -30,7 +30,7 @@ class CNN1DClassifier(nn.Module):
             nn.Flatten(),
             nn.Linear(self.flattened_size, out_channels),
             nn.ReLU(),
-            nn.Linear(out_channels, 2)
+            nn.Linear(out_channels, num_classes)
         )
 
     def forward(self, x):
