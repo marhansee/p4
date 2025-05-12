@@ -51,8 +51,8 @@ def load_data(parquet_files, input_features, target_columns=None):
     y = np.vstack(all_target_data) if target_columns else None
 
 
-    # X = pd.DataFrame(X, columns=input_features)
-    # y = pd.DataFrame(y, columns=target_columns)
+    X = pd.DataFrame(X, columns=input_features)
+    y = pd.DataFrame(y, columns=target_columns)
     print("Processed and sorted the data!")
 
     return X, y
@@ -141,7 +141,7 @@ def main():
     )
 
     print_memory_stats()  # After loading
-    # print(X_train.head(5))
+    print(X_train.head(100))
 
     train_dataset = Forecasting_Dataloader(
         X=X_train,

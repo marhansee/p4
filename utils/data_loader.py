@@ -11,8 +11,8 @@ class Forecasting_Dataloader(Dataset):
         - y: Target values (Pandas DataFrame)
         - seq_length: Number of past timesteps to use
         """
-        self.X = torch.tensor(X, dtype=torch.float32)  # Assuming X is a NumPy array
-        self.y = torch.tensor(y, dtype=torch.float32)  # y contains pairs of lat and lon for each timestep
+        self.X = torch.tensor(X.values, dtype=torch.float32)  # Assuming X is a NumPy array
+        self.y = torch.tensor(y.values, dtype=torch.float32)  # y contains pairs of lat and lon for each timestep
         self.seq_length = seq_length
 
     def __len__(self):
