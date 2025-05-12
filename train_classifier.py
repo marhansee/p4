@@ -271,6 +271,8 @@ def main():
             test_loader=val_loader
         )
 
+        scheduler.step()
+        
         if val_loss < best_val_loss:
             best_val_loss = val_loss
             torch.save(model.state_dict(), weight_path)  # Save model weights

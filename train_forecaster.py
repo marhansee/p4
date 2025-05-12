@@ -266,6 +266,8 @@ def main():
 
         val_loss = avg_mae_lat + avg_mae_lon  
 
+        scheduler.step()
+        
         if val_loss < best_val_loss:
             best_val_loss = val_loss
             torch.save(model.state_dict(), weight_path)  # Save model weights
