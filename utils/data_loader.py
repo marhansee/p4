@@ -7,8 +7,8 @@ class Forecasting_Dataloader(Dataset):
     def __init__(self, X, y, seq_length=10):
         """
         Args:
-        - X: Input features (Pandas DataFrame or PySpark DataFrame)
-        - y: Target values (Pandas DataFrame)
+        - X: Input features (NumPy array)
+        - y: Target values (NumPy array)
         - seq_length: Number of past timesteps to use
         """
         self.X = torch.tensor(X, dtype=torch.float32)  # Assuming X is a NumPy array
