@@ -26,8 +26,8 @@ class CNN_LSTM(nn.Module):
 
         self.lstm = nn.LSTM(input_size=out_channels, hidden_size=hidden_size,
                              num_layers=num_layers, batch_first=True)
-        self.fc1 = nn.Linear(hidden_size, hidden_size)
-        self.fc2 = nn.Linear(hidden_size, num_classes)
+        self.fc1 = nn.Linear(hidden_size, num_classes)
+        # self.fc2 = nn.Linear(hidden_size, num_classes)
         self.relu = nn.ReLU()
 
     def forward(self, x):
@@ -38,8 +38,8 @@ class CNN_LSTM(nn.Module):
         out = out.permute(0, 2, 1)
         out, _ = self.lstm(out)
         out = self.fc1(out[:, -1, :])
-        out = self.relu(out)
-        out = self.fc2(out)
+        # out = self.relu(out)
+        # out = self.fc2(out)
 
         return out
 
