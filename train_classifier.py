@@ -43,6 +43,11 @@ def train(model, device, train_loader, optimizer, epoch, scaler):
 
         # Scale loss, backprop, and update
         scaler.scale(loss).backward()
+
+        # Unscale before gradient clipping
+        scaler.unscale_(optimizer)
+        torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
+
         scaler.step(optimizer)
         scaler.update()
 
@@ -262,6 +267,7 @@ def main():
     print("Initializing training...")
 
     best_val_loss = float('inf')
+    best_f1 = 0.0
     for epoch in range(1, config['train']['num_epochs']+1):
         train(
             model=ddp_model,
@@ -279,11 +285,12 @@ def main():
         )
 
         scheduler.step()
-        
-        if val_loss < best_val_loss:
-            best_val_loss = val_loss
+    
+
+        if f1 > best_f1:
+            best_f1 = f1
             torch.save(model.state_dict(), weight_path)  # Save model weights
-            print(f"New best model saved with Validation Loss: {best_val_loss:.4f}")
+            print(f"New best model saved with F1-score: {best_f1:.4f}")
 
             print("Writing results")
             with open(results_path, "w") as f:  # Overwrite file to keep only the best result
