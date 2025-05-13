@@ -65,12 +65,13 @@ def compute_performance_metrics(y_true, y_pred):
 
 def plot_confusion_matrix(y_true, y_pred, save_img_path):
     cm = confusion_matrix(y_true, y_pred)
-    cm = cm.astype('float') / cm.sum(axis=1)[:, np.newaxis]  # Normalize
+    cm = cm.astype('float') / cm.sum(axis=1)[:, np.newaxis] * 100 # Normalize
 
     plt.figure(figsize=(6, 6))
     sns.heatmap(cm, annot=True, fmt='.2f', cmap='Blues',
                 xticklabels=['No Trawling', 'Trawling'],
-                yticklabels=['No Trawling', 'Trawling'])
+                yticklabels=['No Trawling', 'Trawling'],
+                annot_kws={"format": "%.2f%%"})
     plt.ylabel('True label')
     plt.xlabel('Predicted label')
     plt.title('Confusion Matrix')
