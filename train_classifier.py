@@ -45,8 +45,8 @@ def train(model, device, train_loader, optimizer, epoch, scaler):
         scaler.scale(loss).backward()
 
         # Unscale before gradient clipping
-        scaler.unscale_(optimizer)
-        torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
+        # scaler.unscale_(optimizer)
+        # torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
 
         scaler.step(optimizer)
         scaler.update()
@@ -69,7 +69,8 @@ def train(model, device, train_loader, optimizer, epoch, scaler):
     # Log to wandb
     wandb.log({
         "Epoch Train Loss": epoch_loss,
-        "Epoch Train Accuracy": train_accuracy  # Added missing metric
+        "Epoch Train Accuracy": train_accuracy,  # Added missing metric
+        "Epoch": epoch
     })
 
 def evaluate(model, device, test_loader):
@@ -197,6 +198,11 @@ def main():
                             num_workers=config['train']['num_workers'],
                             pin_memory=True)
     
+
+        # Format experiment name
+    experiment_name = f"{config['model_name']}_{config['experiment_name']}"
+    print(experiment_name)
+    
     # Initialize WandB
     wandb.login()
     wandb.init(project=config['wandb']['project'], config=config)
@@ -254,9 +260,6 @@ def main():
         step_size=config['scheduler']['step_size'],
         gamma=config['scheduler']['gamma'])
 
-    # Format experiment name
-    experiment_name = f"{config['model_name']}_{config['experiment_name']}"
-    print(experiment_name)
 
     # Define folder path to save the results and weights
     results_path = os.path.join(f"classification_results/{config['model_name']}", f"{experiment_name}.txt")

@@ -7,12 +7,12 @@ import torch.nn as nn
 import torch
 
 class LSTMClassifier(nn.Module):
-    def __init__(self, n_features, hidden_size, num_layers, dropout_prop=0.2, num_classes=2):
+    def __init__(self, n_features, hidden_size, num_layers, dropout_prob=0.2, num_classes=2):
         super(LSTMClassifier, self).__init__()
         self.n_features = n_features
         self.hidden_size = hidden_size
         self.num_layers = num_layers
-        self.dropout_prop = dropout_prop
+        self.dropout_prob = dropout_prob
         self.num_classes = num_classes
 
         self.lstm = nn.LSTM(
@@ -20,12 +20,13 @@ class LSTMClassifier(nn.Module):
             hidden_size=self.hidden_size,
             num_layers=self.num_layers,
             batch_first=True,
-            dropout=self.dropout_prop
+            dropout=self.dropout_prob
         )
 
         self.fc = nn.Linear(hidden_size, hidden_size)  # Output one value (logit) for binary classification
         self.fc2 = nn.Linear(hidden_size, self.num_classes)  # Final output layer
         self.relu = nn.ReLU()
+        # self.norm = nn.LayerNorm(hidden_size)
 
     def forward(self, x):
         batch_size = x.size(0)

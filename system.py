@@ -249,7 +249,7 @@ def compute_distance_from_point_to_cable(current_position, seg_start, seg_end):
         closest_point = seg_end
 
     # Compute distance in km using geopy
-    dist = geodesic(current_position, closest_point).kilometers
+    dist = geodesic(current_position, closest_point).meters
 
 
     return dist

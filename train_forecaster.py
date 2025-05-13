@@ -31,11 +31,13 @@ warnings.filterwarnings('ignore')
 
 
 
-def train(model, device, train_loader, optimizer, scheduler, epoch, scaler):
+def train(model, device, train_loader, optimizer, epoch, scaler):
     model.train()
     total_loss = 0
     for batch_idx, (data, target) in enumerate(train_loader):
         data, target = data.to(device), target.to(device)
+        batch_size = target.size(0)
+        target = target.view(batch_size, 2, 20).transpose(1, 2)
         optimizer.zero_grad()
 
         # Implement AMP
@@ -76,6 +78,9 @@ def evaluate(model, device, test_loader):
     with torch.no_grad():
         for data, target in test_loader:
             data, target = data.to(device), target.to(device)
+            batch_size = target.size(0)
+            target = target.view(batch_size, 2, 20).transpose(1, 2)
+
             start_time = time.time()
             output = model(data)
             batch_inference_time = time.time() - start_time
@@ -96,10 +101,10 @@ def evaluate(model, device, test_loader):
     avg_inference_time = (total_inference_time / num_samples) * 1000  # ms
 
     print(f'\nTest set: Average MAE Loss for Latitude: {avg_mae_lat:.4f}, Average MAE Loss for Longitude: {avg_mae_lon:.4f}\n')
+    print(f'Average inference time (ms): {avg_inference_time}')
     wandb.log({
         "Eval MAE Loss Latitude": avg_mae_lat,
         "Eval MAE Loss Longitude": avg_mae_lon,
-        "Avg Inference Time (ms)": avg_inference_time
     })
 
     return avg_mae_lat, avg_mae_lon, avg_inference_time
@@ -131,8 +136,9 @@ def main():
     input_features = ['Latitude', 'Longitude', 'ROT', 'SOG', 'COG', 'Heading', 
                       'Width', 'Length', 'Draught']
     features_to_scale = [feature for feature in input_features if feature not in ['timestamp_epoch', 'MMSI']]
-    target_features = [f'future_lat{i}' for i in range(1, 21)]
-    
+    target_features = [f'future_lat_{i}' for i in range(1, 21)] + \
+                    [f'future_lon_{i}' for i in range(1, 21)]
+        
     X_train, y_train = load_data(
         parquet_files=train_parquet_files,
         input_features=input_features,
@@ -256,7 +262,6 @@ def main():
             device=device_id,
             train_loader=train_loader,
             optimizer=optimizer,
-            scheduler=scheduler,
             epoch=epoch,
             scaler=scaler,
         )
@@ -267,7 +272,7 @@ def main():
             test_loader=val_loader
         )
 
-        val_loss = avg_mae_lat + avg_mae_lon  
+        val_loss = (avg_mae_lat + avg_mae_lon) / 2  
 
         scheduler.step()
         

@@ -1,6 +1,5 @@
 import torch
 import torch.nn as nn
-from torchsummary import summary
 from thop import profile
 
 class BiGRUModel(nn.Module):
@@ -15,7 +14,8 @@ class BiGRUModel(nn.Module):
 
         self.gru = nn.GRU(
             self.n_features, self.hidden_size, self.num_layers,
-            batch_first=True, dropout=dropout_prob,
+            batch_first=True, 
+            dropout=dropout_prob,
             bidirectional=True
         )
 

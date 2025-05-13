@@ -125,14 +125,15 @@ def main():
     from data_loader import Forecasting_Dataloader
     from torch.utils.data import DataLoader
     # Load data
-    train_data_folder_path = os.path.abspath('data/parquet/')
+    train_data_folder_path = os.path.abspath('data/parquet_test/')
     train_parquet_files = glob.glob(os.path.join(train_data_folder_path, '*.parquet'))
 
     # print(train_parquet_files)  # Debug print
 
     input_features = ['Latitude', 'Longitude', 'ROT', 'SOG', 'COG', 'Heading', 
                       'Width', 'Length', 'Draught']
-    target_features = [f'future_lat_{i}' for i in range(1, 21)]
+    # target_features = [f'future_lat_{i}' for i in range(1, 21)]
+    target_features = ['trawling']
     
     X_train, y_train = load_data(
         parquet_files=train_parquet_files,
@@ -141,8 +142,15 @@ def main():
     )
 
     print_memory_stats()  # After loading
-    print(X_train.head(100))
 
+    unique, counts = np.unique(y_train, return_counts=True)
+    print("Class distribution in 'trawling':")
+    for u, c in zip(unique, counts):
+        print(f"Class {u}: {c}")
+
+
+
+    sys.exit()
     train_dataset = Forecasting_Dataloader(
         X=X_train,
         y=y_train,
