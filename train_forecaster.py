@@ -139,10 +139,11 @@ def main():
     input_features = ['MMSI','timestamp_epoch','Latitude', 'Longitude', 'ROT', 'SOG', 'COG', 'Heading', 
                       'Width', 'Length', 'Draught']
 
-    lats = [f'future_lat_{i}' for i in range(6, 121, 6)]
-    lons = [f'future_lon_{i}' for i in range(6, 121, 6)]
+    target_features = [f'future_lat_{i}' for i in range(6, 121, 6)] + \
+           [f'future_lon_{i}' for i in range(6, 121, 6)]
+    # lons = [f'future_lon_{i}' for i in range(6, 121, 6)]
 
-    target_features = [item for pair in zip(lats, lons) for item in pair]
+    # target_features = [item for pair in zip(lats, lons) for item in pair]
         
     X_train, y_train = load_data(
         parquet_files=train_parquet_files,

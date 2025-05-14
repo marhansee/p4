@@ -10,9 +10,10 @@ import onnxruntime as ort
 import matplotlib.pyplot as plt
 import seaborn as sns
 import numpy as np
+import argparse
 
 # Load utils
-from utils.train_utils import load_config_file, load_scaler_json, load_data, scale_data
+from utils.train_utils import load_config_file, load_scaler_json, load_data, scale_data, make_sequences
 from utils.data_loader import Classifier_Dataloader
 
 warnings.filterwarnings('ignore')
@@ -70,8 +71,7 @@ def plot_confusion_matrix(y_true, y_pred, save_img_path):
     plt.figure(figsize=(6, 6))
     sns.heatmap(cm, annot=True, fmt='.2f', cmap='Blues',
                 xticklabels=['No Trawling', 'Trawling'],
-                yticklabels=['No Trawling', 'Trawling'],
-                annot_kws={"format": "%.2f%%"})
+                yticklabels=['No Trawling', 'Trawling'])
     plt.ylabel('True label')
     plt.xlabel('Predicted label')
     plt.title('Confusion Matrix')
@@ -99,6 +99,10 @@ def plot_pr_curve(y_true, y_pred, save_img_path):
 
 
 def main():
+    parser = argparse.ArgumentParser(description='Train classifier')
+    parser.add_argument('--snapshot_name', type=str, required=True, help='Name of model you want to test')
+    parser.add_argument('--seq_length', type=int, required=True, help="Input sequence length")
+    args = parser.parse_args()
     # Load config
     config_path = os.path.join(os.path.dirname(__file__),'train_config.yaml')
     config = load_config_file(config_path)
@@ -116,11 +120,10 @@ def main():
     val_parquet_files = glob.glob(os.path.join(val_data_folder_path, '*.parquet'))
 
     val_parquet_files.sort()
-    val_parquet_files = val_parquet_files[5:] # Select test set (excluding val set from training)
 
-    input_features = ['Latitude', 'Longitude', 'ROT', 'SOG', 'COG', 'Heading', 
+
+    input_features = ['MMSI','timestamp_epoch','Latitude', 'Longitude', 'ROT', 'SOG', 'COG', 'Heading', 
                       'Width', 'Length', 'Draught']
-    features_to_scale = [feature for feature in input_features if feature not in ['timestamp_epoch', 'MMSI']]
     target_feature = ['trawling']
     
     X_test, y_test = load_data(
@@ -129,6 +132,7 @@ def main():
         target_columns=target_feature
     )
 
+    X_test, y_test = make_sequences(X_test_scaled, y_test, seq_len=args.seq_length, group_col='MMSI')
     # Scale input features
     # X_val_scaled = scale_data(scaler, X_val, features_to_scale)
 

@@ -1,10 +1,13 @@
 import torch
 import torch.onnx
 import os
+import sys
+
 
 from archs.cnn_lstm_classifier import CNN_LSTM
 from archs.cnn1d_classifier import CNN1DClassifier
 from archs.lstm_classifier import LSTMClassifier
+
 
 """
 Script has been inspired by the official PyTorch guidelines for exporting
@@ -25,8 +28,8 @@ models = {
             num_layers=2,
             num_classes=1
         ),
-        'weight_path': 'snapshots/classification/hybrid/hybrid_finalv1.pth',
-        'onnx_path': 'snapshots/classification/trained_models/hybrid_model.onnx'
+        'weight_path': 'models/classifiers/snapshots/hybrid_finalv3.pth',
+        'onnx_path': 'models/classifiers/onnx/hybrid_finalv3.onnx'
     },
 
     'cnn1d': {
@@ -36,8 +39,8 @@ models = {
             out_channels=32,
             num_classes=1
         ),
-        'weight_path': 'snapshots/classification/1dcnn/1dcnn_finalv1.pth',
-        'onnx_path': 'snapshots/classification/trained_models/1dcnn_model.onnx'
+        'weight_path': 'models/classifiers/snapshots/1dcnn_finalv3.pth',
+        'onnx_path': 'models/classifiers/onnx/1dcnn_finalv3.onnx'
     },
 
     'lstm': {
@@ -48,13 +51,13 @@ models = {
             num_layers=2,
             dropout_prob=0.2
         ),
-        'weight_path': 'snapshots/classification/lstm/lstm_finalv1.pth',
-        'onnx_path': 'snapshots/classification/trained_models/lstm_model.onnx'
+        'weight_path': 'models/classifiers/snapshots/lstm_finalv3.pth',
+        'onnx_path': 'models/classifiers/onnx/lstm_finalv3.onnx'
     }
 }
 
 def main():
-    os.makedirs('snapshots/classification/trained_models', exist_ok=True)
+    # os.makedirs('snapshots/classification/trained_models', exist_ok=True)
 
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -66,9 +69,9 @@ def main():
 
         # Generate dummy input that matches the input shape expected by the model        
         if isinstance(model, CNN_LSTM):
-            dummy_input = torch.randn(1, 9, 60).to(device)  # Batch size 1, 9 features, 60 sequence length
+            dummy_input = torch.randn(1, 60, 9).to(device)  # Batch size 1, 60 sequence length, 9 features
         elif isinstance(model, CNN1DClassifier):
-            dummy_input = torch.randn(1, 9, 60).to(device)  # Batch size 1, 9 features, 60 sequence length
+            dummy_input = torch.randn(1, 60, 9).to(device)  # Batch size 1, 60 sequence length, 9 features
         elif isinstance(model, LSTMClassifier):
             dummy_input = torch.randn(1, 60, 9).to(device)  # Batch size 1, 60 sequence length, 9 features
         
