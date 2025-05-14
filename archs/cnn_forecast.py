@@ -1,7 +1,6 @@
 
 import torch
 import torch.nn as nn
-from torchsummary import summary
 from thop import profile
 
 class CNN1DForecaster(nn.Module):

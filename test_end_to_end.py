@@ -142,13 +142,13 @@ def main():
             if is_vessel_in_any_buffer(row['Latitude'], row['Longitude'], buffers=zones):
                 if mmsi not in sus_vessels.keys():
                     sus_vessels[mmsi] = row['# Timestamp']
-                print(f"Vessel {mmsi} was trawling inside the critical zone at time {row['# Timestamp']}")
+                    print(f"Vessel {mmsi} was trawling inside the critical zone at time {row['# Timestamp']}")
             # else:
                 # print("No trawling vessel was detected inside the critical zone.")
         
-    print(sus_vessels)
+    print(sus_vessels) # {219013178: '04/01/2025 20:08:06', 220127000: '04/01/2025 02:16:42', 220278000: '04/01/2025 05:19:53'}
 
-
+    
 
 
 
