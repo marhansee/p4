@@ -153,11 +153,11 @@ def main():
     val_parquet_files = glob.glob(os.path.join(val_data_folder_path, '*.parquet'))
 
     val_parquet_files.sort()
-    val_parquet_files = val_parquet_files[:5] # Only select 5 of test set
+    train_parquet_files.sort()
+
 
     input_features = ['MMSI', 'timestamp_epoch', 'Latitude', 'Longitude', 'ROT', 'SOG', 'COG', 'Heading', 
                       'Width', 'Length', 'Draught']
-    features_to_scale = [feature for feature in input_features if feature not in ['timestamp_epoch', 'MMSI']]
     target_feature = ['trawling']
     
     X_train, y_train = load_data(
@@ -173,16 +173,14 @@ def main():
     )
 
     # Scale input features
-    # X_train_scaled = scale_data(scaler, X_train, features_to_scale)
-    # X_val_scaled = scale_data(scaler, X_val, features_to_scale)
+    X_train_scaled = scale_data(scaler, X_train)
+    X_val_scaled = scale_data(scaler, X_val)
 
-    X_train, y_train = make_sequences(X_train, y_train, seq_len=config['arch_param']['seq_len'], group_col='MMSI')
-    X_val, y_val = make_sequences(X_val, y_val, seq_len=config['arch_param']['seq_len'], group_col='MMSI')
+    X_train, y_train = make_sequences(X_train_scaled, y_train, 
+                                      seq_len=config['arch_param']['seq_len'], 
+                                      group_col='MMSI')
+    X_val, y_val = make_sequences(X_val_scaled, y_val, seq_len=config['arch_param']['seq_len'], group_col='MMSI')
 
-
-    # Drop timestamp and MMSI
-    X_train_scaled = np.delete(X_train_scaled, ['MMSI','timestamp_epoch','trawling'], axis=1)
-    X_val_scaled = np.delete(X_val_scaled, ['MMSI','timestamp_epoch','trawling'], axis=1)
 
     train_dataset = Classifier_Dataloader2(
         X_sequences=X_train,

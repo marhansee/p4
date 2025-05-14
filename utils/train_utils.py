@@ -109,34 +109,31 @@ def load_scaler_json(file_path):
         print(f"Unexpected error: {e}")
 
 
-def scale_data(scaler, X_train, features_to_scale):
+def scale_data(scaler, X_train):
     """
     Scale the input features based on the provided scaler, keeping non-scaled features unchanged.
 
     Parameters:
-    - scaler: A json-file containing mean and std values for scaling each feature.
-    - X_train: NumPy array of input features.
-    - features_to_scale: List of feature columns to be scaled.
+    - scaler: A dictionary containing mean and std values for scaling each feature.
+    - X_train: Pandas DataFrame of input features.
 
     Returns:
     - X_train_scaled: Scaled version of X_train with original features kept unchanged.
     """
-    # Identify indices of features to scale
-    scale_indices = [i for i, feature in enumerate(features_to_scale)]
-    
     # Create a copy of X_train to avoid modifying the original
     X_train_scaled = X_train.copy()
-
-    # Loop through the features to scale and scale the corresponding columns
-    for i, feature in enumerate(features_to_scale):
-        mean_feature = scaler[f'{feature}_mean']
-        std_feature = scaler[f'{feature}_std']
-        
-        # Scale the feature (subtract mean, divide by std)
-        X_train_scaled[:, scale_indices[i]] = (X_train[:, scale_indices[i]] - mean_feature) / std_feature
     
+    # Loop through the scaler dictionary and scale the corresponding columns
+    for feature, stats in scaler.items():
+        if feature in X_train.columns:  # Check if feature is in X_train columns
+            mean_feature = stats['mean']
+            std_feature = stats['std']
+            
+            # Scale the feature (subtract mean, divide by std)
+            X_train_scaled[feature] = (X_train[feature] - mean_feature) / std_feature
+            
     print("Selected features have been scaled!")
-
+    
     return X_train_scaled
 
 def print_memory_stats(device='cpu'):
@@ -149,23 +146,45 @@ def main():
     from data_loader import Forecasting_Dataloader
     from torch.utils.data import DataLoader
     # Load data
-    train_data_folder_path = os.path.abspath('data/parquet_test/')
+    train_data_folder_path = os.path.abspath('data/v4/')
     train_parquet_files = glob.glob(os.path.join(train_data_folder_path, '*.parquet'))
 
     # print(train_parquet_files)  # Debug print
 
-    input_features = ['Latitude', 'Longitude', 'ROT', 'SOG', 'COG', 'Heading', 
+    input_features = ['MMSI', 'timestamp_epoch', 'Latitude', 'Longitude', 'ROT', 'SOG', 'COG', 'Heading', 
                       'Width', 'Length', 'Draught']
-    # target_features = [f'future_lat_{i}' for i in range(1, 21)]
-    target_features = ['trawling']
+    lats = [f'future_lat_{i}' for i in range(6, 121, 6)]
+    lons = [f'future_lon_{i}' for i in range(6, 121, 6)]
+
+    target_features = [item for pair in zip(lats, lons) for item in pair]
+    print(target_features)
+    # target_features = ['trawling']
+    sys.exit()
     
+    scaler = load_scaler_json('data/train_norm_stats.json')
+
     X_train, y_train = load_data(
         parquet_files=train_parquet_files,
         input_features=input_features,
         target_columns=target_features
     )
 
+    print(target_features)
+    X_train_scaled = scale_data(scaler, X_train)
     print_memory_stats()  # After loading
+
+
+    X_train, y_train = make_sequences(X_train_scaled, y_train, seq_len=10, group_col='MMSI')
+    batch_size = y_train.size(0)
+    target = y_train.view(batch_size, 2, 20).transpose(1, 2)
+    print(target[0])
+    print(target[1])
+
+    sys.exit()
+    print("Unscaled:")
+    print(X_train.head(5))
+    print("Scaled")
+    print(X_train_scaled.head(5))
 
     unique, counts = np.unique(y_train, return_counts=True)
     print("Class distribution in 'trawling':")

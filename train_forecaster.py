@@ -15,7 +15,7 @@ from torch.optim.lr_scheduler import StepLR
 import numpy as np
 import pyarrow.parquet as pq
 import glob
-
+import argparse
 # Load model architectures
 from archs.lstm_forecaster import LSTMModel
 from archs.bigru_forecast import BiGRUModel
@@ -23,8 +23,8 @@ from archs.cnn_forecast import CNN1DForecaster
 
 # Load utils
 from utils.train_utils import load_config_file, load_scaler_json, \
-    load_data, scale_data
-from utils.data_loader import Forecasting_Dataloader
+    load_data, scale_data, make_sequences
+from utils.data_loader import Forecasting_Dataloader, Classifier_Dataloader2
 
 warnings.filterwarnings('ignore')
 
@@ -111,10 +111,12 @@ def evaluate(model, device, test_loader):
 
 
 def main():
+    parser = argparse.ArgumentParser(description='Train forecaster')
+    parser.add_argument('--config', type=str, required=True, help='Path to configuration file')
+    args = parser.parse_args()
 
     # Load config
-    config_path = os.path.join(os.path.dirname(__file__),'train_config.yaml')
-    config = load_config_file(config_path)
+    config = load_config_file(args.config)
 
     # Load scaler [FIX PATH]
     scaler_path = os.path.join(os.path.dirname(__file__),'metadata.json')
@@ -131,20 +133,23 @@ def main():
     val_parquet_files = glob.glob(os.path.join(val_data_folder_path, '*.parquet'))
 
     val_parquet_files.sort()
-    val_parquet_files = val_parquet_files[:5] # Only select 5 of test set
+    train_parquet_files.sort()
 
-    input_features = ['Latitude', 'Longitude', 'ROT', 'SOG', 'COG', 'Heading', 
+
+    input_features = ['MMSI','timestamp_epoch','Latitude', 'Longitude', 'ROT', 'SOG', 'COG', 'Heading', 
                       'Width', 'Length', 'Draught']
-    features_to_scale = [feature for feature in input_features if feature not in ['timestamp_epoch', 'MMSI']]
-    target_features = [f'future_lat_{i}' for i in range(1, 21)] + \
-                    [f'future_lon_{i}' for i in range(1, 21)]
+
+    lats = [f'future_lat_{i}' for i in range(6, 121, 6)]
+    lons = [f'future_lon_{i}' for i in range(6, 121, 6)]
+
+    target_features = [item for pair in zip(lats, lons) for item in pair]
         
     X_train, y_train = load_data(
         parquet_files=train_parquet_files,
         input_features=input_features,
         target_columns=target_features
     )
-
+ 
     X_val, y_val = load_data(
         parquet_files=val_parquet_files,
         input_features=input_features,
@@ -152,25 +157,26 @@ def main():
     )
 
     # Scale input features
-    X_train_scaled = scale_data(scaler, X_train, features_to_scale)
-    X_val_scaled = scale_data(scaler, X_val, features_to_scale)
+    X_train_scaled = scale_data(scaler, X_train)
+    X_val_scaled = scale_data(scaler, X_val)
 
-    # Drop timestamp and MMSI
-    # X_train_scaled = np.delete(X_train_scaled, ['MMSI','timestamp_epoch','trawling'], axis=1)
-    # X_val_scaled = np.delete(X_val_scaled, ['MMSI','timestamp_epoch','trawling'], axis=1)
-   
+    X_train, y_train = make_sequences(X_train_scaled, y_train, 
+                                      seq_len=config['arch_param']['seq_len'], 
+                                      group_col='MMSI')
+    X_val, y_val = make_sequences(X_val_scaled, y_val, 
+                                  seq_len=config['arch_param']['seq_len'], 
+                                  group_col='MMSI')
     # Load datasets
-    train_dataset = Forecasting_Dataloader(
-        X=X_train_scaled,
-        y=y_train,
-        seq_length=config['arch_param']['seq_len'],
+    train_dataset = Classifier_Dataloader2(
+        X_sequences=X_train,
+        y_labels=y_train
     )
 
-    val_dataset = Forecasting_Dataloader(
-        X=X_val_scaled,
-        y=y_val,
-        seq_length=config['arch_param']['seq_len'],
+    val_dataset = Classifier_Dataloader2(
+        X_sequences=X_val,
+        y_labels=y_val
     )
+
 
     # Load dataloaders
     train_loader = DataLoader(dataset=train_dataset, 
