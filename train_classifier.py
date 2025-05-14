@@ -14,6 +14,7 @@ from torch.optim.lr_scheduler import StepLR
 from sklearn.metrics import f1_score
 import glob
 import numpy as np
+import argparse
 
 # Load model architectures
 from archs.cnn1d_classifier import CNN1DClassifier
@@ -21,8 +22,9 @@ from archs.cnn_lstm_classifier import CNN_LSTM
 from archs.lstm_classifier import LSTMClassifier 
 
 # Load utils
-from utils.train_utils import load_config_file, load_scaler_json, load_data, scale_data
-from utils.data_loader import Classifier_Dataloader
+from utils.train_utils import load_config_file, load_scaler_json, load_data, scale_data, make_sequences
+from utils.data_loader import Classifier_Dataloader, Classifier_Dataloader2
+
 
 warnings.filterwarnings('ignore')
 
@@ -127,9 +129,14 @@ def evaluate(model, device, test_loader):
 
 
 def main():
+    parser = argparse.ArgumentParser(description='Train classifier')
+    parser.add_argument('--config', type=str, required=True, help='Path to configuration file')
+    args = parser.parse_args()
+
+
     # Load config
-    config_path = os.path.join(os.path.dirname(__file__),'train_config.yaml')
-    config = load_config_file(config_path)
+    #config_path = os.path.join(os.path.dirname(__file__),'train_config.yaml')
+    config = load_config_file(args.config)
 
     # Make folders for results and snapshots
     os.makedirs(f"classification_results/{config['model_name']}", exist_ok=True)
@@ -148,7 +155,7 @@ def main():
     val_parquet_files.sort()
     val_parquet_files = val_parquet_files[:5] # Only select 5 of test set
 
-    input_features = ['Latitude', 'Longitude', 'ROT', 'SOG', 'COG', 'Heading', 
+    input_features = ['MMSI', 'timestamp_epoch', 'Latitude', 'Longitude', 'ROT', 'SOG', 'COG', 'Heading', 
                       'Width', 'Length', 'Draught']
     features_to_scale = [feature for feature in input_features if feature not in ['timestamp_epoch', 'MMSI']]
     target_feature = ['trawling']
@@ -166,24 +173,38 @@ def main():
     )
 
     # Scale input features
-    X_train_scaled = scale_data(scaler, X_train, features_to_scale)
-    X_val_scaled = scale_data(scaler, X_val, features_to_scale)
+    # X_train_scaled = scale_data(scaler, X_train, features_to_scale)
+    # X_val_scaled = scale_data(scaler, X_val, features_to_scale)
+
+    X_train, y_train = make_sequences(X_train, y_train, seq_len=config['arch_param']['seq_len'], group_col='MMSI')
+    X_val, y_val = make_sequences(X_val, y_val, seq_len=config['arch_param']['seq_len'], group_col='MMSI')
+
 
     # Drop timestamp and MMSI
-    # X_train_scaled = np.delete(X_train_scaled, ['MMSI','timestamp_epoch','trawling'], axis=1)
-    # X_val_scaled = np.delete(X_val_scaled, ['MMSI','timestamp_epoch','trawling'], axis=1)
+    X_train_scaled = np.delete(X_train_scaled, ['MMSI','timestamp_epoch','trawling'], axis=1)
+    X_val_scaled = np.delete(X_val_scaled, ['MMSI','timestamp_epoch','trawling'], axis=1)
 
-    train_dataset = Classifier_Dataloader(
-        X=X_train_scaled,
-        y=y_train,
-        seq_length=config['arch_param']['seq_len']
+    train_dataset = Classifier_Dataloader2(
+        X_sequences=X_train,
+        y_labels=y_train
     )
 
-    val_dataset = Classifier_Dataloader(
-        X=X_val_scaled,
-        y=y_val,
-        seq_length=config['arch_param']['seq_len']
+    val_dataset = Classifier_Dataloader2(
+        X_sequences=X_val,
+        y_labels=y_val
     )
+
+    # train_dataset = Classifier_Dataloader(
+    #     X=X_train_scaled,
+    #     y=y_train,
+    #     seq_length=config['arch_param']['seq_len']
+    # )
+
+    # val_dataset = Classifier_Dataloader(
+    #     X=X_val_scaled,
+    #     y=y_val,
+    #     seq_length=config['arch_param']['seq_len']
+    # )
 
     # Load dataloaders
     train_loader = DataLoader(dataset=train_dataset, 

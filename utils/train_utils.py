@@ -51,12 +51,36 @@ def load_data(parquet_files, input_features, target_columns=None):
     y = np.vstack(all_target_data) if target_columns else None
 
 
-    # X = pd.DataFrame(X, columns=input_features)
-    # y = pd.DataFrame(y, columns=target_columns)
+    X = pd.DataFrame(X, columns=input_features)
+    y = pd.DataFrame(y, columns=target_columns)
     print("Processed and sorted the data!")
 
     return X, y
 
+def make_sequences(X_df, y_df, seq_len, group_col):
+    sequences = []
+    labels = []
+
+    for _, group in X_df.groupby(group_col):
+        group = group.sort_values('timestamp_epoch')
+        group_y = y_df.loc[group.index]
+
+        # Drop non-feature columns BEFORE converting to NumPy
+        group_features = group.drop(columns=[group_col, 'timestamp_epoch'])
+
+        X_array = group_features.values
+        y_array = group_y.values
+
+        if len(group) < seq_len:
+            continue
+
+        for i in range(len(group) - seq_len + 1):
+            x_seq = X_array[i:i+seq_len]
+            y_target = y_array[i+seq_len-1]
+            sequences.append(x_seq)
+            labels.append(y_target)
+
+    return np.array(sequences), np.array(labels)
 
 def load_config_file(file_path):
     if not os.path.exists(file_path):
