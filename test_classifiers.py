@@ -14,7 +14,7 @@ import argparse
 
 # Load utils
 from utils.train_utils import load_config_file, load_scaler_json, load_data, scale_data, make_sequences
-from utils.data_loader import Classifier_Dataloader
+from utils.data_loader import Classifier_Dataloader2
 
 warnings.filterwarnings('ignore')
 
@@ -28,7 +28,7 @@ def inference_onnx(onnx_session, device, test_loader):
     all_labels = []
 
     with torch.no_grad():  
-        for data, target in test_loader:
+        for batch_idx, (data, target) in enumerate(test_loader):
             data, target = data.to(device), target.to(device)
 
             start_time = time.time()
@@ -39,14 +39,16 @@ def inference_onnx(onnx_session, device, test_loader):
             total_inference_time += batch_inference_time
 
             # Apply sigmoid and round for binary classification
-            pred = torch.sigmoid(torch.tensor(output)).round()
+            pred = torch.sigmoid(torch.tensor(output, device=device)).round()
             correct += pred.eq(target.view_as(pred)).sum().item()
             num_samples += len(target)
 
             # Store predictions and labels for F1 score calculation
             all_preds.extend(pred.cpu().numpy())
             all_labels.extend(target.cpu().numpy())
-
+            
+            if batch_idx % 500 == 0:
+                print("Completed 500 batches")
     avg_inference_time = (total_inference_time / num_samples) * 1000  # ms
 
     print(f'Average inference time (ms): {avg_inference_time}')
@@ -100,63 +102,58 @@ def plot_pr_curve(y_true, y_pred, save_img_path):
 
 def main():
     parser = argparse.ArgumentParser(description='Train classifier')
-    parser.add_argument('--snapshot_name', type=str, required=True, help='Name of model you want to test')
-    parser.add_argument('--seq_length', type=int, required=True, help="Input sequence length")
+    parser.add_argument('--snapshot_name', type=str, required=True, help='Name of model you want to test', default='hybrid_finalv3')
+    parser.add_argument('--seq_length', type=int, required=True, help="Input sequence length", default=60)
     args = parser.parse_args()
-    # Load config
-    config_path = os.path.join(os.path.dirname(__file__),'train_config.yaml')
-    config = load_config_file(config_path)
 
     # Make folders for results and snapshots
-    results_dir = f"classification_results/test/{config['model_name']}"
+    results_dir = f"results/classification_results/test/{args.snapshot_name}"
     os.makedirs(results_dir, exist_ok=True)
 
     # Load scaler [FIX PATH]
-    # scaler_path = os.path.join(os.path.dirname(__file__),'metadata.json')
-    # scaler = load_scaler_json(scaler_path)
+    scaler_path = os.path.join(os.path.dirname(__file__),'data/norm_stats/v4/train_norm_stats.json')
+    scaler = load_scaler_json(scaler_path)
     
     # Load data
-    val_data_folder_path = os.path.abspath('data/parquet')  # FIX PATH
-    val_parquet_files = glob.glob(os.path.join(val_data_folder_path, '*.parquet'))
+    test_data_folder_path = os.path.abspath('data/test/v4')
+    test_parquet_files = glob.glob(os.path.join(test_data_folder_path, '*.parquet'))
 
-    val_parquet_files.sort()
+    test_parquet_files.sort()
 
-
-    input_features = ['MMSI','timestamp_epoch','Latitude', 'Longitude', 'ROT', 'SOG', 'COG', 'Heading', 
+    input_features = ['MMSI', 'timestamp_epoch','Latitude', 'Longitude', 'ROT', 'SOG', 'COG', 'Heading', 
                       'Width', 'Length', 'Draught']
     target_feature = ['trawling']
     
     X_test, y_test = load_data(
-        parquet_files=val_parquet_files,
+        parquet_files=test_parquet_files,
         input_features=input_features,
         target_columns=target_feature
     )
 
-    X_test, y_test = make_sequences(X_test_scaled, y_test, seq_len=args.seq_length, group_col='MMSI')
     # Scale input features
-    # X_val_scaled = scale_data(scaler, X_val, features_to_scale)
+    X_test_scaled = scale_data(scaler, X_test)
 
+    X_test, y_test = make_sequences(X_test_scaled, y_test, seq_len=args.seq_length, group_col='MMSI')
 
-    test_dataset = Classifier_Dataloader(
-        X=X_test,
-        y=y_test,
-        seq_length=config['arch_param']['seq_len']
+    test_dataset = Classifier_Dataloader2(
+        X_sequences=X_test,
+        y_labels=y_test
     )
 
     # Load dataloaders                              
     test_loader = DataLoader(dataset=test_dataset,
-                            batch_size=config['train']['batch_size'],
+                            batch_size=3512,
                             shuffle=False,
-                            num_workers=config['train']['num_workers'],
+                            num_workers=20,
                             pin_memory=True)
     
 
     # ONNX model path
-    onnx_model_path = 'path.onnx'  # Replace with the actual ONNX model path
+    onnx_model_path = f'models/classifiers/onnx/{args.snapshot_name}.onnx'  # Replace with the actual ONNX model path
     onnx_session = ort.InferenceSession(onnx_model_path)
 
     # Format experiment name
-    experiment_name = f"{config['model_name']}_test"
+    experiment_name = f"{args.snapshot_name}_test"
     print(experiment_name)
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")

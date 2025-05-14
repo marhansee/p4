@@ -82,6 +82,30 @@ def make_sequences(X_df, y_df, seq_len, group_col):
 
     return np.array(sequences), np.array(labels)
 
+def make_sequences2(X_df, y_df, seq_len, group_col):
+    sequences = []
+    labels = []
+
+    for _, group in X_df.groupby(group_col):
+        group = group.sort_values('timestamp_epoch')
+        group_y = y_df.loc[group.index]
+
+        # Drop non-feature columns BEFORE converting to NumPy
+
+        X_array = group.values
+        y_array = group_y.values
+
+        if len(group) < seq_len:
+            continue
+
+        for i in range(len(group) - seq_len + 1):
+            x_seq = X_array[i:i+seq_len]
+            y_target = y_array[i+seq_len-1]
+            sequences.append(x_seq)
+            labels.append(y_target)
+
+    return np.array(sequences), np.array(labels)
+
 def load_config_file(file_path):
     if not os.path.exists(file_path):
         print(f"File not found: {file_path}")

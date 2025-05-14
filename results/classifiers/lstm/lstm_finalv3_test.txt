@@ -1,0 +1,5 @@
+Experiment name: lstm_finalv3_test
+F1-score: 0.9244
+Precision: 0.9131
+Recall: 0.9360
+Inference time (ms): 0.03

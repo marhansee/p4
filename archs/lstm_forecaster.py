@@ -1,7 +1,6 @@
 import torch.nn as nn
 import torch
 from thop import profile
-from torchsummary import summary
 
 class LSTMModel(nn.Module):
     def __init__(self, n_features, hidden_size, num_layers, output_seq_len=20, output_size=2, dropout_prop=0.2):

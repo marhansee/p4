@@ -1,0 +1,5 @@
+Experiment name: 1dcnn_finalv3_test
+F1-score: 0.8978
+Precision: 0.8989
+Recall: 0.8967
+Inference time (ms): 0.08

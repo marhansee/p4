@@ -1,45 +1,107 @@
 
 import torch
+import wandb
 import os
 from torch.utils.data import DataLoader
+import torch.nn as nn
+from torch.optim import Adam
+import torch.nn.functional as F
 import warnings
 import time
-from sklearn.metrics import f1_score, precision_score, recall_score, confusion_matrix, precision_recall_curve
+import torch.distributed as dist
+from torch.nn.parallel import DistributedDataParallel as DDP
+from torch.optim.lr_scheduler import StepLR
+from sklearn.metrics import f1_score
 import glob
-import onnxruntime as ort
-import matplotlib.pyplot as plt
-import seaborn as sns
 import numpy as np
 import argparse
 
+# Load model architectures
+from archs.cnn1d_classifier import CNN1DClassifier
+from archs.cnn_lstm_classifier import CNN_LSTM
+from archs.lstm_classifier import LSTMClassifier 
+
 # Load utils
 from utils.train_utils import load_config_file, load_scaler_json, load_data, scale_data, make_sequences
-from utils.data_loader import Classifier_Dataloader2
+from utils.data_loader import Classifier_Dataloader, Classifier_Dataloader2
 
 warnings.filterwarnings('ignore')
 
+def train(model, device, train_loader, optimizer, epoch, scaler):
+    model.train()
+    total_loss = 0
+    correct = 0
+    num_samples = 0
 
-def inference_onnx(onnx_session, device, test_loader):
-    onnx_session.set_providers(['CUDAExecutionProvider' if torch.cuda.is_available() else 'CPUExecutionProvider'])
+    for batch_idx, (data, target) in enumerate(train_loader):
+        data, target = data.to(device), target.to(device)
+        # Compute imbalance ratio
+       # num_positive = (target == 1).sum().item()
+       # num_negative = (target == 0).sum().item()
+       # pos_weight = torch.tensor([num_negative / num_positive]).to(device)
+
+        optimizer.zero_grad()
+
+        # AMP (Automatic Mixed Precision)
+        with torch.cuda.amp.autocast():
+            output = model(data)  # Forward pass (logits)
+            loss = F.binary_cross_entropy_with_logits(output, target.float())
+        # Scale loss, backprop, and update
+        scaler.scale(loss).backward()
+
+        # Unscale before gradient clipping
+       # scaler.unscale_(optimizer)
+       # torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
+
+        scaler.step(optimizer)
+        scaler.update()
+
+        total_loss += loss.item()
+
+        # Accuracy calculation (sigmoid + thresholding)
+        pred = torch.sigmoid(output)  
+        pred = (pred > 0.5).float()  # Better than torch.round()
+        correct += pred.eq(target.view_as(pred)).sum().item()
+        num_samples += len(target)
+
+        if batch_idx % 100 == 0:
+            print(f'Train Epoch: {epoch} [{batch_idx * len(data)}/{len(train_loader.dataset)} ({100. * batch_idx / len(train_loader):.0f}%)]\tLoss: {loss.item():.6f}')
+
+    # Average loss & accuracy
+    epoch_loss = total_loss / num_samples  # More precise than len(train_loader)
+    train_accuracy = 100. * correct / num_samples
+
+    # Log to wandb
+    wandb.log({
+        "Epoch Train Loss": epoch_loss,
+        "Epoch Train Accuracy": train_accuracy,  # Added missing metric
+        "Epoch": epoch
+    })
+
+def evaluate(model, device, test_loader):
+    model.eval()  # Set the model to evaluation mode
+    test_loss = 0
     correct = 0
     num_samples = 0
     total_inference_time = 0
     all_preds = []
     all_labels = []
 
-    with torch.no_grad():  
+    with torch.no_grad():  # Turn off gradients for evaluation
         for data, target in test_loader:
             data, target = data.to(device), target.to(device)
-
+            
             start_time = time.time()
-            # ONNX model inference
-            inputs = {onnx_session.get_inputs()[0].name: data.cpu().numpy()}
-            output = onnx_session.run(None, inputs)[0]
+            output = model(data)  # Forward pass
             batch_inference_time = time.time() - start_time
             total_inference_time += batch_inference_time
 
-            # Apply sigmoid and round for binary classification
-            pred = torch.sigmoid(torch.tensor(output)).round()
+            # Binary cross-entropy loss for binary classification
+            test_loss += F.binary_cross_entropy_with_logits(output, target.float(), reduction='sum').item()
+            
+            # Predictions: output is logits, so we apply a sigmoid to get probabilities
+            pred = torch.sigmoid(output)  # Round to 0 or 1
+            pred = torch.round(pred)
             correct += pred.eq(target.view_as(pred)).sum().item()
             num_samples += len(target)
 
@@ -47,139 +109,207 @@ def inference_onnx(onnx_session, device, test_loader):
             all_preds.extend(pred.cpu().numpy())
             all_labels.extend(target.cpu().numpy())
 
+    test_loss /= num_samples  # Average loss
+    accuracy = 100. * correct / num_samples  # Accuracy as a percentage
+
+    # Calculate F1 score
+    f1 = f1_score(all_labels, all_preds)
+
     avg_inference_time = (total_inference_time / num_samples) * 1000  # ms
 
+    print(f'\nTest set: Average Loss: {test_loss:.4f}, Accuracy: {accuracy:.2f}%, F1 Score: {f1:.4f}')
     print(f'Average inference time (ms): {avg_inference_time}')
+    wandb.log({
+        "Eval Loss": test_loss,
+        "Eval Accuracy": accuracy,
+        "Eval F1 Score": f1
+    })
 
-    return all_preds, all_labels, avg_inference_time
+    return test_loss, accuracy, f1, avg_inference_time
 
-def compute_performance_metrics(y_true, y_pred):
-    f1 = f1_score(y_true, y_pred)
-    precision = precision_score(y_true, y_pred)
-    recall = recall_score(y_true, y_pred)
 
-    
-    print(f'\nF1 Score: {f1:.4f}')
-    print(f'Precision: {precision:.4f}')
-    print(f'Recall: {recall:.4f}')
-    return f1, precision, recall 
-
-def plot_confusion_matrix(y_true, y_pred, save_img_path):
-    cm = confusion_matrix(y_true, y_pred)
-    cm = cm.astype('float') / cm.sum(axis=1)[:, np.newaxis] * 100 # Normalize
-
-    plt.figure(figsize=(6, 6))
-    sns.heatmap(cm, annot=True, fmt='.2f', cmap='Blues',
-                xticklabels=['No Trawling', 'Trawling'],
-                yticklabels=['No Trawling', 'Trawling'],
-                annot_kws={"format": "%.2f%%"})
-    plt.ylabel('True label')
-    plt.xlabel('Predicted label')
-    plt.title('Confusion Matrix')
-
-    plt.tight_layout()
-    if save_img_path:
-        plt.savefig(save_img_path, dpi=300)  
-    plt.close() 
-
-def plot_pr_curve(y_true, y_pred, save_img_path):
-    precision, recall, _ = precision_recall_curve(y_true, y_pred)
-
-    plt.figure(figsize=(8, 6))
-    plt.plot(recall, precision, color='b',
-             label='PR curve (area = {:.2f})'.format(np.trapz(precision, recall)))
-    plt.xlabel('Recall')
-    plt.ylabel('Precision')
-    plt.title('Precision-Recall Curve')
-    plt.legend(loc='best')
-
-    plt.tight_layout()
-    if save_img_path:
-        plt.savefig(save_img_path, dpi=300)  
-    plt.close()  
 
 
 def main():
     parser = argparse.ArgumentParser(description='Train classifier')
-    parser.add_argument('--snapshot_name', type=str, required=True, help='Name of model you want to test')
-    parser.add_argument('--seq_length', type=int, required=True, help="Input sequence length")
+    parser.add_argument('--config', type=str, required=True, help='Path to configuration file')
     args = parser.parse_args()
 
+    # Load config
+    config = load_config_file(args.config)
+
     # Make folders for results and snapshots
-    results_dir = f"results/classification_results/test/{args.snapshot_name}"
-    os.makedirs(results_dir, exist_ok=True)
+    os.makedirs(f"classification_results/{config['model_name']}", exist_ok=True)
+    os.makedirs(f"snapshots/classification/{config['model_name']}", exist_ok=True)
 
     # Load scaler [FIX PATH]
     scaler_path = os.path.join(os.path.dirname(__file__),'data/norm_stats/v4/train_norm_stats.json')
     scaler = load_scaler_json(scaler_path)
     
     # Load data
-    test_data_folder_path = os.path.abspath('data/petastorm/test/v4')
-    test_parquet_files = glob.glob(os.path.join(test_data_folder_path, '*.parquet'))
-
-    test_parquet_files.sort()
+    train_data_folder_path = os.path.abspath('data/petastorm/train/v4') # FIX PATH
+    train_parquet_files = glob.glob(os.path.join(train_data_folder_path, '*.parquet'))
+    val_data_folder_path = os.path.abspath('data/petastorm/val/v4')  # FIX PATH
+    val_parquet_files = glob.glob(os.path.join(val_data_folder_path, '*.parquet'))
+    
+    val_parquet_files.sort()
+    train_parquet_files.sort()
+    #val_parquet_files = val_parquet_files[:5] # Only select 5 of test set for validation
 
     input_features = ['MMSI', 'timestamp_epoch','Latitude', 'Longitude', 'ROT', 'SOG', 'COG', 'Heading', 
                       'Width', 'Length', 'Draught']
     target_feature = ['trawling']
     
-    X_test, y_test = load_data(
-        parquet_files=test_parquet_files,
+    X_train, y_train = load_data(
+        parquet_files=train_parquet_files,
         input_features=input_features,
         target_columns=target_feature
     )
 
-    # Scale input features
-    X_test_scaled = scale_data(scaler, X_test)
-
-    X_test, y_test = make_sequences(X_test_scaled, y_test, seq_len=args.seq_length, group_col='MMSI')
-
-    test_dataset = Classifier_Dataloader2(
-        X_sequences=X_test,
-        y_labels=y_test
+    X_val, y_val = load_data(
+        parquet_files=val_parquet_files,
+        input_features=input_features,
+        target_columns=target_feature
     )
 
-    # Load dataloaders                              
-    test_loader = DataLoader(dataset=test_dataset,
-                            batch_size=3512,
+
+    X_train_scaled = scale_data(scaler, X_train)
+    X_val_scaled = scale_data(scaler, X_val) 
+  
+    X_train, y_train = make_sequences(X_train_scaled, y_train, seq_len=config['arch_param']['seq_len'], group_col='MMSI')
+    X_val, y_val = make_sequences(X_val_scaled, y_val, seq_len=config['arch_param']['seq_len'], group_col='MMSI')
+
+
+    train_dataset = Classifier_Dataloader2(
+        X_sequences=X_train,
+        y_labels=y_train
+    )
+
+    val_dataset = Classifier_Dataloader2(
+        X_sequences=X_val,
+        y_labels=y_val
+    )
+
+
+    # Load dataloaders
+    train_loader = DataLoader(dataset=train_dataset, 
+                              batch_size=config['train']['batch_size'],
+                              shuffle=True,
+                              num_workers=config['train']['num_workers'],
+                              pin_memory=True)
+                              
+    val_loader = DataLoader(dataset=val_dataset,
+                            batch_size=config['train']['batch_size'],
                             shuffle=False,
-                            num_workers=20,
+                            num_workers=config['train']['num_workers'],
                             pin_memory=True)
-    
 
-    # ONNX model path
-    onnx_model_path = f'models/classifiers/onnx/{args.snapshot_name}.onnx'  # Replace with the actual ONNX model path
-    onnx_session = ort.InferenceSession(onnx_model_path)
-
-    # Format experiment name
-    experiment_name = f"{args.snapshot_name}_test"
+        # Format experiment name
+    experiment_name = f"{config['model_name']}_{config['experiment_name']}"
     print(experiment_name)
 
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    
+    # Initialize WandB
+    wandb.login()
+    wandb.init(project=config['wandb']['project'], config=config, name=experiment_name)
+
+    torch.manual_seed(config['train']['seed'])
+
+    # Initialize ranks and process groups
+    torch.cuda.set_device(int(os.environ[config['ddp']['set_device']]))
+    dist.init_process_group(config['ddp']['process_group'])
+    rank = dist.get_rank()
+
+    # Define device ID and load model with device
+    device_id = rank % torch.cuda.device_count()
+
+    # Select model based on configuration
+    if config['model_name'].lower() == 'hybrid':
+        model = CNN_LSTM(
+            n_features=config['arch_param']['n_features'],
+            out_channels=config['arch_param']['out_channels'],
+            hidden_size=config['arch_param']['hidden_size'],
+            num_layers=config['arch_param']['num_layers'],
+            num_classes=config['arch_param']['n_classes']
+        )
+    elif config['model_name'].lower() == '1dcnn':
+        model = CNN1DClassifier(
+            n_features=config['arch_param']['n_features'],
+            seq_len=config['arch_param']['seq_len'],
+            out_channels=config['arch_param']['out_channels'],
+            num_classes=config['arch_param']['n_classes']
+        )
+    elif config['model_name'].lower() == 'lstm':
+        model = LSTMClassifier(
+            n_features=config['arch_param']['n_features'],
+            hidden_size=config['arch_param']['hidden_size'],
+            num_layers=config['arch_param']['num_layers'],
+            dropout_prob=config['train']['dropout_prob'],
+            num_classes=config['arch_param']['n_classes']
+        )
+    else:
+        raise AssertionError('Model must be either "hybrid", "1dcnn", "lstm"')
+
+
+    model = model.to(torch.device("cuda", device_id))
+    
+    # Wrap model in DDP
+    ddp_model = DDP(model, device_ids=[device_id])
+
+    # Define scaler for Automatic Mixed Precision
+    scaler = torch.cuda.amp.GradScaler()
+
+    
+    # Define optimizer and lr scheduler
+    optimizer = Adam(ddp_model.parameters(), lr=config['train']['lr'])
+    scheduler = StepLR(
+        optimizer=optimizer,
+        step_size=config['scheduler']['step_size'],
+        gamma=config['scheduler']['gamma'])
+
 
     # Define folder path to save the results and weights
-    results_path = os.path.join(results_dir, f"{experiment_name}.txt")
+    results_path = os.path.join(f"classification_results/{config['model_name']}", f"{experiment_name}.txt")
+    weight_path = os.path.join(f"snapshots/classification/{config['model_name']}", f"{experiment_name}.pth")
 
-    # Evaluate ONNX model
-    print("Initializing testing session...")
-    y_true, y_pred, avg_inference_time = inference_onnx(onnx_session, device, test_loader)
-    f1, precision, recall = compute_performance_metrics(y_true, y_pred)
+    # Training loop
+    print("Initializing training...")
 
-    # Write results to file
-    print("Writing results")
-    with open(results_path, "w") as f:  # Overwrite file to keep only the best result
-        f.write(f"Experiment name: {experiment_name}\n")
-        f.write(f"F1-score: {f1:.4f}\n")
-        f.write(f"Precision: {precision:.4f}\n")
-        f.write(f"Recall: {recall:.4f}\n")
-        f.write(f"Inference time (ms): {avg_inference_time:.2f}\n")
 
-    # Plot confusion matrix and PR-curve
-    cm_path = os.path.join(results_dir, f"{experiment_name}_CM.png")
-    pr_path = os.path.join(results_dir, f"{experiment_name}_PR.png")
-    plot_confusion_matrix(y_true, y_pred, save_img_path=cm_path)
-    plot_pr_curve(y_true, y_pred, save_img_path=pr_path)
-    
+    best_f1 = 0.0
+    for epoch in range(1, config['train']['num_epochs']+1):
+        train(
+            model=ddp_model,
+            device=device_id,
+            train_loader=train_loader,
+            optimizer=optimizer,
+            epoch=epoch,
+            scaler=scaler,
+        )
+
+        val_loss, accuracy, f1, avg_inference_time = evaluate(
+            model=ddp_model, 
+            device=device_id, 
+            test_loader=val_loader
+        )
+
+        scheduler.step()
+        print(f"Experiment: {experiment_name}")
+
+        if f1 > best_f1:
+            best_f1 = f1
+            torch.save(model.state_dict(), weight_path)  # Save model weights
+            print(f"New best model saved with F1-score: {best_f1:.4f}")
+            print("Writing results")
+            with open(results_path, "w") as f:  # Overwrite file to keep only the best result
+                f.write(f"Experiment name: {experiment_name}\n")
+                f.write(f"Accuracy: {accuracy:.4f}\n")
+                f.write(f"F1-score: {f1:.4f}\n")
+                f.write(f"Epoch: {epoch}\n")
+                f.write(f"Inference time (ms): {avg_inference_time}\n")
+
+    print("Completed training.")
+
 
 
 if __name__ == '__main__':
