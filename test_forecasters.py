@@ -12,71 +12,72 @@ import argparse
 import torch.nn.functional as F
 
 # Load utils
-from utils.train_utils import load_config_file, load_scaler_json, load_data, scale_data, make_sequences2, inverse_scale_lat_lon
-from utils.data_loader import Classifier_Dataloader_with_MMSI
+from utils.train_utils import load_config_file, load_scaler_json, load_data, scale_data, make_sequences, inverse_scale_lat_lon
+from utils.data_loader import Classifier_Dataloader2
 
 warnings.filterwarnings('ignore')
 
 
-def inference_onnx(onnx_session, device, test_loader):
-    onnx_session.set_providers(['CUDAExecutionProvider' if torch.cuda.is_available() else 'CPUExecutionProvider'])
 
-    num_samples = 0
-    total_inference_time = 0
-    total_mae_lat = 0
-    total_mae_lon = 0
+def inference_onnx(model_path, dataloader, device='cpu'):
+    # Load ONNX model
+    providers = ['CUDAExecutionProvider'] if device == 'cuda' else ['CPUExecutionProvider']
+    session = ort.InferenceSession(model_path, providers=providers)
 
-    mae_lat_list = []
-    mae_lon_list = []
-    mae_mean_list = []
+    mae_lat_list, mae_lon_list, mae_mean_list = [], [], []
+    inference_times = []
 
-    with torch.no_grad():
-        for data, target in test_loader:
-            data, target = data.to(device), target.to(device)
-            batch_size = target.size(0)
-            target = target.view(batch_size, 2, 20).transpose(1, 2)  # Shape: [B, 20, 2]
+    for inputs, targets in dataloader:
+        inputs_np = inputs.numpy().astype(np.float32)
+        targets_np = targets.numpy()
 
-            start_time = time.time()
-            inputs = {onnx_session.get_inputs()[0].name: data.cpu().numpy()}
-            output = onnx_session.run(None, inputs)[0]  # Shape: [B, 20, 2]
-            batch_inference_time = time.time() - start_time
-            total_inference_time += batch_inference_time
+        start_time = time.time()
+        outputs_np = session.run(None, {"input": inputs_np})[0]
+        inference_time = time.time() - start_time
+        inference_times.append(inference_time)
 
-            lat_target = target[:, :, 0]  # [B, 20]
-            lon_target = target[:, :, 1]  # [B, 20]
-            lat_output = torch.from_numpy(output[:, :, 0]).to(device)  # [B, 20]
-            lon_output = torch.from_numpy(output[:, :, 1]).to(device)  # [B, 20]
+        # Reshape targets and outputs: [B, 40] -> [B, 20, 2]
+        targets = torch.tensor(targets_np).view(-1, 20, 2)
+        outputs = torch.tensor(outputs_np).view(-1, 20, 2)
 
-            # Compute MAE per prediction (per timestep)
-            lat_mae_batch = torch.abs(lat_output - lat_target)  # [B, 20]
-            lon_mae_batch = torch.abs(lon_output - lon_target)  # [B, 20]
-            mean_mae_batch = (lat_mae_batch + lon_mae_batch) / 2  # [B, 20]
+        lat_target = targets[:, :, 0]
+        lon_target = targets[:, :, 1]
+        lat_output = outputs[:, :, 0]
+        lon_output = outputs[:, :, 1]
 
-            # Flatten and accumulate
-            mae_lat_list.extend(lat_mae_batch.view(-1).tolist())
-            mae_lon_list.extend(lon_mae_batch.view(-1).tolist())
-            mae_mean_list.extend(mean_mae_batch.view(-1).tolist())
+        lat_mae_batch = torch.abs(lat_output - lat_target)
+        lon_mae_batch = torch.abs(lon_output - lon_target)
+        mean_mae_batch = (lat_mae_batch + lon_mae_batch) / 2.0
 
-            total_mae_lat += lat_mae_batch.sum().item()
-            total_mae_lon += lon_mae_batch.sum().item()
-            num_samples += lat_target.numel()
+        mae_lat_list.append(lat_mae_batch)
+        mae_lon_list.append(lon_mae_batch)
+        mae_mean_list.append(mean_mae_batch)
 
-    avg_mae_lat = total_mae_lat / num_samples
-    avg_mae_lon = total_mae_lon / num_samples
-    avg_mae_total = (avg_mae_lat + avg_mae_lon) / 2
-    avg_inference_time = (total_inference_time / num_samples) * 1000  # ms
+    # Stack all MAEs: shape [N, 20]
+    lat_tensor = torch.cat(mae_lat_list, dim=0)  # [N, 20]
+    lon_tensor = torch.cat(mae_lon_list, dim=0)
+    mean_tensor = torch.cat(mae_mean_list, dim=0)
 
-    var_mae_lat = np.var(mae_lat_list)
-    var_mae_lon = np.var(mae_lon_list)
-    var_mae_mean = np.var(mae_mean_list)
+    # Per-step (across all samples) MAE
+    stepwise_mae_lat = lat_tensor.mean(dim=0).tolist()
+    stepwise_mae_lon = lon_tensor.mean(dim=0).tolist()
+    stepwise_mae_mean = mean_tensor.mean(dim=0).tolist()
 
-    print(f'Average inference time (ms): {avg_inference_time:.4f}')
-    print(f'Lat MAE variance: {var_mae_lat:.6f}')
-    print(f'Lon MAE variance: {var_mae_lon:.6f}')
-    print(f'Mean MAE variance: {var_mae_mean:.6f}')
+    # Overall average MAE
+    avg_mae_lat = lat_tensor.mean().item()
+    avg_mae_lon = lon_tensor.mean().item()
+    avg_mae_total = mean_tensor.mean().item()
+
+    # Variance (spread) of MAE values
+    var_mae_lat = lat_tensor.var().item()
+    var_mae_lon = lon_tensor.var().item()
+    var_mae_mean = mean_tensor.var().item()
+
+    avg_inference_time = np.mean(inference_times)
 
     return avg_mae_lat, avg_mae_lon, avg_mae_total, avg_inference_time, \
-        var_mae_lat, var_mae_lon, var_mae_mean, mae_lat_list, mae_lon_list, mae_mean_list
+           var_mae_lat, var_mae_lon, var_mae_mean, \
+           stepwise_mae_lat, stepwise_mae_lon, stepwise_mae_mean
 
 
 def plot_vessel_trajectory(mmsi, mmsi_array, X_sequences, y_labels, y_preds, seq_len, scaler, future_steps=20):
@@ -155,12 +156,11 @@ def main():
     # Scale input features
     X_test_scaled = scale_data(scaler, X_test)
 
-    X_test, y_test, mmsi_test = make_sequences2(X_test_scaled, y_test, seq_len=args.seq_length, group_col='MMSI')
+    X_test, y_test = make_sequences(X_test_scaled, y_test, seq_len=args.seq_length, group_col='MMSI')
 
-    test_dataset = Classifier_Dataloader_with_MMSI(
+    test_dataset = Classifier_Dataloader2(
         X_sequences=X_test,
         y_labels=y_test,
-        mmsi_array=mmsi_test
     )
 
     # Load dataloaders                              
@@ -173,8 +173,6 @@ def main():
 
     # ONNX model path
     onnx_model_path = f'models/forecasters/{args.snapshot_name}.onnx'  # Replace with the actual ONNX model path
-    onnx_session = ort.InferenceSession(onnx_model_path)
-
     # Format experiment name
     experiment_name = f"{args.snapshot_name}_test"
     print(experiment_name)
@@ -187,30 +185,25 @@ def main():
     # Evaluate ONNX model
     print("Initializing testing session...")
     avg_mae_lat, avg_mae_lon, avg_mae_total, avg_inference_time, \
-    var_mae_lat, var_mae_lon, var_mae_mean, mae_lat_list, mae_lon_list, \
-    mae_mean_list = inference_onnx(onnx_session, device, test_loader)
+    var_mae_lat, var_mae_lon, var_mae_mean, \
+    stepwise_mae_lat, stepwise_mae_lon, \
+    stepwise_mae_mean = inference_onnx(onnx_model_path, test_loader, device)
 
 
     # Write results to file
     print("Writing results")
-    with open(results_path, "w") as f:  # Overwrite file to keep only the best result
-        f.write(f"Experiment name: {experiment_name}\n")
-        f.write(f"Average MAE for lat: {avg_mae_lat:.4f}\n")
-        f.write(f"Average MAE for lon: {avg_mae_lon:.4f}\n")
-        f.write(f"Average MAE between lat/lon: {avg_mae_total:.4f}\n")
-        f.write(f"Variance MAE for lat: {var_mae_lat:.4f}\n")
-        f.write(f"Variance MAE for lon: {var_mae_lon:.4f}\n")
-        f.write(f"Variance MAE between lat/lon: {var_mae_mean:.4f}\n")
-        f.write(f"MAE for lat per step: {mae_lat_list:.4f}\n")
-        f.write(f"MAE for lon per step: {mae_lon_list:.4f}\n")
-        f.write(f"MAE for mean lon/lon per step: {mae_mean_list:.4f}\n")
-        f.write(f"Inference time (ms): {avg_inference_time}\n")
+    with open(results_path, "w") as f:
+        f.write(f"Avg MAE lat: {avg_mae_lat:.6f}\n")
+        f.write(f"Avg MAE lon: {avg_mae_lon:.6f}\n")
+        f.write(f"Avg MAE mean: {avg_mae_total:.6f}\n")
+        f.write(f"Avg inference time (s): {avg_inference_time:.6f}\n")
+        f.write(f"MAE lat variance: {var_mae_lat:.6f}\n")
+        f.write(f"MAE lon variance: {var_mae_lon:.6f}\n")
+        f.write(f"MAE mean variance: {var_mae_mean:.6f}\n\n")
+        f.write(f"Stepwise MAE lat: {stepwise_mae_lat}\n")
+        f.write(f"Stepwise MAE lon: {stepwise_mae_lon}\n")
+        f.write(f"Stepwise MAE mean: {stepwise_mae_mean}\n")
 
-    # Plot confusion matrix and PR-curve
-    save_image_path = os.path.join(results_dir, f"{experiment_name}_visualization.png")
-
-
-    
 
 
 if __name__ == '__main__':

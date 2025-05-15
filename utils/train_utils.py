@@ -165,6 +165,21 @@ def scale_data(scaler, X_train):
     
     return X_train_scaled
 
+
+def inverse_scale_lat_lon(lat_scaled, lon_scaled, scaler):
+    """
+    Inversely scale normalized lat/lon using the provided scaler dict.
+    """
+    lat_mean = scaler['Latitude']['mean']
+    lat_std = scaler['Latitude']['std']
+    lon_mean = scaler['Longitude']['mean']
+    lon_std = scaler['Longitude']['std']
+
+    lat_original = lat_scaled * lat_std + lat_mean
+    lon_original = lon_scaled * lon_std + lon_mean
+
+    return lat_original, lon_original
+
 def print_memory_stats(device='cpu'):
     print(f"\n[MEMORY USAGE]")
     print(f"CPU RAM: {psutil.Process().memory_info().rss / 1024 ** 2:.2f} MB")

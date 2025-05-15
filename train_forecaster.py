@@ -323,7 +323,7 @@ def main():
                 f.write(f"Inference time (ms): {avg_inference_time}\n")
 
         early_stopping(val_loss)
-        if early_stopping.early_stop():
+        if early_stopping.early_stop:
             print(f"Early stopping at epoch {epoch} with best validation loss {early_stopping.best_loss:.4f}")
             break
     print("Completed training.")
