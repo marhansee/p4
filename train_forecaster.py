@@ -20,6 +20,8 @@ import argparse
 from archs.lstm_forecaster import LSTMModel
 from archs.bigru_forecast import BiGRUModel
 from archs.cnn_forecast import CNN1DForecaster
+from archs.seq2seq_lstm import Seq2SeqLSTM
+from archs.seq2seq_bigru import Seq2SeqBiGRU
 
 # Load utils
 from utils.train_utils import load_config_file, load_scaler_json, \
@@ -215,7 +217,7 @@ def main():
             num_layers=config['arch_param']['num_layers'],
             output_seq_len=config['arch_param']['output_seq_len'],
             output_size=config['arch_param']['output_size'],
-            dropout_prop=config['train']['dropout_prop']
+            dropout_prop=config['train']['dropout_prob']
         ).to(device_id)
     elif config['model_name'].lower() == 'bigru':
         model = BiGRUModel(
@@ -224,7 +226,7 @@ def main():
             num_layers=config['arch_param']['num_layers'],
             output_seq_len=config['arch_param']['output_seq_len'],
             output_size=config['arch_param']['output_size'],
-            dropout_prop=config['train']['dropout_prop']
+            dropout_prob=config['train']['dropout_prob']
         ).to(device_id)
     elif config['model_name'].lower() == '1dcnn':
         model = CNN1DForecaster(
@@ -234,6 +236,24 @@ def main():
             output_size=config['arch_param']['output_size'],
             output_seq_len=config['arch_param']['output_seq_len']
         ).to(device_id)
+    elif config['model_name'].lower() == 's2s_lstm':
+        model = Seq2SeqLSTM(
+            n_features=config['arch_param']['n_features'],
+            hidden_size=config['arch_param']['hidden_size'],
+            num_layers=config['arch_param']['num_layers'],
+            output_seq_len=config['arch_param']['output_seq_len'],
+            output_size=config['arch_param']['output_size'],
+            dropout=config['train']['dropout_prob']
+        ).to(device_id)
+    elif config['model_name'].lower() == 's2s_bigru':
+        model = Seq2SeqBiGRU(
+            n_features=config['arch_param']['n_features'],
+            hidden_size=config['arch_param']['hidden_size'],
+            num_layers=config['arch_param']['num_layers'],
+            output_seq_len=config['arch_param']['output_seq_len'],
+            output_size=config['arch_param']['output_size'],
+            dropout_prob=config['train']['dropout_prob']
+        )
     else:
         raise AssertionError('Model must be either "lstm", "bigru", "1dcnn"')
     
