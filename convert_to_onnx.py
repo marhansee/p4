@@ -10,6 +10,8 @@ from archs.lstm_classifier import LSTMClassifier
 from archs.cnn_forecast import CNN1DForecaster
 from archs.lstm_forecaster import LSTMModel
 from archs.bigru_forecast import BiGRUModel
+from archs.seq2seq_bigru import Seq2SeqBiGRU
+from archs.seq2seq_lstm import Seq2SeqLSTM
 
 
 """
@@ -61,14 +63,14 @@ classification_models = {
 
 forecasting_models = {
     'lstm': {
-        'config': LSTMModel(
+        'config': Seq2SeqLSTM(
             n_features=9,
             hidden_size=32,
             num_layers=2,
             dropout_prop=0.2
         ),
-        'weight_path': 'models/forecasters/lstm_mainv1.pth',
-        'onnx_path': 'models/forecasters/onnx/lstm_mainv1.onnx'
+        'weight_path': 'snapshots/forecast/s2s_lstm/s2s_lstm_debugging.pth',
+        'onnx_path': 'models/forecasters/onnx/s2s_lstm.onnx'
     },
 
     '1dcnn': {
@@ -77,18 +79,18 @@ forecasting_models = {
             seq_len=60,
             out_channels=32
         ),
-        'weight_path': 'models/forecasters/1dcnn_mainv1.pth',
+        'weight_path': 'snapshots/forecast/1dcnn/1dcnn_mainv1.pth',
         'onnx_path': 'models/forecasters/onnx/1dcnn_mainv1.onnx'
     },
 
     'bigru': {
-        'config': BiGRUModel(
+        'config': Seq2SeqBiGRU(
             n_features=9,
             hidden_size=64,
             num_layers=1,          
         ),
-        'weight_path': 'models/forecasters/bigru_mainv2.pth',
-        'onnx_path': 'models/forecasters/onnx/bigru_mainv2.onnx'
+        'weight_path': 'snapshots/forecast/s2s_bigru/s2s_bigru_debugging.pth',
+        'onnx_path': 'models/forecasters/onnx/s2s_bigru.onnx'
     }
 }
 

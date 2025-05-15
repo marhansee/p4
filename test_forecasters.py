@@ -10,6 +10,7 @@ import seaborn as sns
 import numpy as np
 import argparse
 import torch.nn.functional as F
+import sys
 
 # Load utils
 from utils.train_utils import load_config_file, load_scaler_json, load_data, scale_data, make_sequences, inverse_scale_lat_lon
@@ -28,23 +29,26 @@ def inference_onnx(model_path, dataloader, device='cpu'):
     inference_times = []
 
     for inputs, targets in dataloader:
-        inputs_np = inputs.numpy().astype(np.float32)
-        targets_np = targets.numpy()
+        inputs, targets = inputs.to(device), targets.to(device)
+        batch_size = targets.size(0)
+        targets = targets.view(batch_size, 2, 20).transpose(1, 2)
+
+        inputs_np = inputs.cpu().numpy().astype(np.float32)
+        # targets_np = targets.numpy()
 
         start_time = time.time()
         outputs_np = session.run(None, {"input": inputs_np})[0]
         inference_time = time.time() - start_time
         inference_times.append(inference_time)
 
-        # Reshape targets and outputs: [B, 40] -> [B, 20, 2]
-        targets = torch.tensor(targets_np).view(-1, 20, 2)
-        outputs = torch.tensor(outputs_np).view(-1, 20, 2)
+        # Convert outputs to tensor
+        outputs = torch.from_numpy(outputs_np).to(targets.device)
 
         lat_target = targets[:, :, 0]
         lon_target = targets[:, :, 1]
         lat_output = outputs[:, :, 0]
         lon_output = outputs[:, :, 1]
-
+        
         lat_mae_batch = torch.abs(lat_output - lat_target)
         lon_mae_batch = torch.abs(lon_output - lon_target)
         mean_mae_batch = (lat_mae_batch + lon_mae_batch) / 2.0
