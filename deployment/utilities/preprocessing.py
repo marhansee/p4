@@ -64,6 +64,7 @@ def resample_to_fixed_interval(df):
     return df_resampled.reset_index()
 
 
+
 def preprocess_vessel_df(input_path: str, MMSI: int):
     df = load_csv(input_path)
     df = pick_vessel(df, MMSI)
