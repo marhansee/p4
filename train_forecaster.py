@@ -27,6 +27,7 @@ from archs.seq2seq_bigru import Seq2SeqBiGRU
 from utils.train_utils import load_config_file, load_scaler_json, \
     load_data, scale_data, make_sequences
 from utils.data_loader import Forecasting_Dataloader, Classifier_Dataloader2
+from utils.early_stopping import EarlyStopping
 
 warnings.filterwarnings('ignore')
 
@@ -59,7 +60,7 @@ def train(model, device, train_loader, optimizer, epoch, scaler):
 
         total_loss += loss.item()
 
-        if batch_idx % 500 == 0:
+        if batch_idx % 250 == 0:
             print('Train Epoch: {} [{}/{} ({:.0f}%)]\tLoss: {:.6f}'.format(
                 epoch, batch_idx * len(data), len(train_loader.dataset),
                 100. * batch_idx / len(train_loader), loss.item()))
@@ -121,7 +122,7 @@ def main():
     config = load_config_file(args.config)
 
     # Load scaler [FIX PATH]
-    scaler_path = os.path.join(os.path.dirname(__file__),'metadata.json')
+    scaler_path = os.path.join(os.path.dirname(__file__),'data/norm_stats/v4/train_norm_stats.json')
     scaler = load_scaler_json(scaler_path)
 
     # Make folders for results and snapshots
@@ -129,9 +130,9 @@ def main():
     os.makedirs(f"snapshots/forecast/{config['model_name']}", exist_ok=True)
 
     # Load data
-    train_data_folder_path = os.path.abspath('data/parquet') # FIX PATH
+    train_data_folder_path = os.path.abspath('data/petastorm/train/v4') # FIX PATH
     train_parquet_files = glob.glob(os.path.join(train_data_folder_path, '*.parquet'))
-    val_data_folder_path = os.path.abspath('data/parquet')  # FIX PATH
+    val_data_folder_path = os.path.abspath('data/petastorm/val/v4')  # FIX PATH
     val_parquet_files = glob.glob(os.path.join(val_data_folder_path, '*.parquet'))
 
     val_parquet_files.sort()
@@ -193,10 +194,14 @@ def main():
                             shuffle=False,
                             num_workers=config['train']['num_workers'],
                             pin_memory=True)
+
+        # Format experiment name
+    experiment_name = f"{config['model_name']}_{config['experiment_name']}"
+    print(experiment_name)
     
     # Initialize WandB
     wandb.login()
-    wandb.init(project=config['wandb']['project'], config=config)
+    wandb.init(project=config['wandb']['project'], config=config, name=experiment_name)
 
     torch.manual_seed(config['train']['seed'])
 
@@ -253,7 +258,7 @@ def main():
             output_seq_len=config['arch_param']['output_seq_len'],
             output_size=config['arch_param']['output_size'],
             dropout_prob=config['train']['dropout_prob']
-        )
+        ).to(device_id)
     else:
         raise AssertionError('Model must be either "lstm", "bigru", "1dcnn"')
     
@@ -278,7 +283,7 @@ def main():
     results_path = os.path.join(f"forecast_results/{config['model_name']}", f"{experiment_name}.txt")
     weight_path = os.path.join(f"snapshots/forecast/{config['model_name']}", f"{experiment_name}.pth")
 
-
+    early_stopping = EarlyStopping(7, min_delta=0.01)
     # Training loop
     print("Initializing training...")
 
@@ -302,6 +307,8 @@ def main():
         val_loss = (avg_mae_lat + avg_mae_lon) / 2  
 
         scheduler.step()
+
+        print(experiment_name)
         
         if val_loss < best_val_loss:
             best_val_loss = val_loss
@@ -313,8 +320,12 @@ def main():
                 f.write(f"Experiment name: {experiment_name}\n")
                 f.write(f"MAE - Lat: {avg_mae_lat:.4f}, Long: {avg_mae_lon:.4f}\n")
                 f.write(f"Epoch: {epoch}\n")
-                f.write(f"Inference time (ms): {avg_inference_time:.2f}\n")
+                f.write(f"Inference time (ms): {avg_inference_time}\n")
 
+        early_stopping(val_loss)
+        if early_stopping.early_stop():
+            print(f"Early stopping at epoch {epoch} with best validation loss {early_stopping.best_loss:.4f}")
+            break
     print("Completed training.")
 
 

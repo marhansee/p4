@@ -24,6 +24,7 @@ from archs.lstm_classifier import LSTMClassifier
 # Load utils
 from utils.train_utils import load_config_file, load_scaler_json, load_data, scale_data, make_sequences
 from utils.data_loader import Classifier_Dataloader, Classifier_Dataloader2
+from utils.early_stopping import EarlyStoppingF1
 
 warnings.filterwarnings('ignore')
 
@@ -35,11 +36,6 @@ def train(model, device, train_loader, optimizer, epoch, scaler):
 
     for batch_idx, (data, target) in enumerate(train_loader):
         data, target = data.to(device), target.to(device)
-        # Compute imbalance ratio
-       # num_positive = (target == 1).sum().item()
-       # num_negative = (target == 0).sum().item()
-       # pos_weight = torch.tensor([num_negative / num_positive]).to(device)
-
         optimizer.zero_grad()
 
         # AMP (Automatic Mixed Precision)
@@ -48,10 +44,6 @@ def train(model, device, train_loader, optimizer, epoch, scaler):
             loss = F.binary_cross_entropy_with_logits(output, target.float())
         # Scale loss, backprop, and update
         scaler.scale(loss).backward()
-
-        # Unscale before gradient clipping
-       # scaler.unscale_(optimizer)
-       # torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
 
         scaler.step(optimizer)
         scaler.update()
@@ -154,7 +146,7 @@ def main():
     
     val_parquet_files.sort()
     train_parquet_files.sort()
-    #val_parquet_files = val_parquet_files[:5] # Only select 5 of test set for validation
+
 
     input_features = ['MMSI', 'timestamp_epoch','Latitude', 'Longitude', 'ROT', 'SOG', 'COG', 'Heading', 
                       'Width', 'Length', 'Draught']
@@ -272,9 +264,9 @@ def main():
     results_path = os.path.join(f"classification_results/{config['model_name']}", f"{experiment_name}.txt")
     weight_path = os.path.join(f"snapshots/classification/{config['model_name']}", f"{experiment_name}.pth")
 
+    early_stopping = EarlyStoppingF1(patience=7, min_delta=0.01)
     # Training loop
     print("Initializing training...")
-
 
     best_f1 = 0.0
     for epoch in range(1, config['train']['num_epochs']+1):
@@ -307,6 +299,11 @@ def main():
                 f.write(f"F1-score: {f1:.4f}\n")
                 f.write(f"Epoch: {epoch}\n")
                 f.write(f"Inference time (ms): {avg_inference_time}\n")
+
+        early_stopping(f1)
+        if early_stopping.early_stop:
+            print(f"Early stopping at epoch {epoch} with best F1-score {early_stopping.best_score:.4f}")
+            break
 
     print("Completed training.")
 
