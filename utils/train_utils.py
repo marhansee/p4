@@ -80,19 +80,22 @@ def make_sequences(X_df, y_df, seq_len, group_col):
             sequences.append(x_seq)
             labels.append(y_target)
 
+
     return np.array(sequences), np.array(labels)
 
 def make_sequences2(X_df, y_df, seq_len, group_col):
     sequences = []
     labels = []
+    mmsi_list = []
 
-    for _, group in X_df.groupby(group_col):
+    for mmsi, group in X_df.groupby(group_col):
         group = group.sort_values('timestamp_epoch')
         group_y = y_df.loc[group.index]
 
         # Drop non-feature columns BEFORE converting to NumPy
+        group_features = group.drop(columns=[group_col, 'timestamp_epoch'])
 
-        X_array = group.values
+        X_array = group_features.values
         y_array = group_y.values
 
         if len(group) < seq_len:
@@ -103,8 +106,10 @@ def make_sequences2(X_df, y_df, seq_len, group_col):
             y_target = y_array[i+seq_len-1]
             sequences.append(x_seq)
             labels.append(y_target)
+            mmsi_list.append(mmsi)
 
-    return np.array(sequences), np.array(labels)
+
+    return np.array(sequences), np.array(labels), np.array(mmsi_list)
 
 def load_config_file(file_path):
     if not os.path.exists(file_path):
