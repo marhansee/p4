@@ -39,7 +39,6 @@ class AIS_Sequence(BaseModel):
 # Insert Preprocess logic blow:
 
 
-
 @app.get("/", response_class=RedirectResponse)
 def index():
     url = "/docs"
@@ -49,8 +48,8 @@ def preprocess_raw_data(data_request: AIS_Sequence):
     # Prepare the input data as a numpy array
 
     input_data = np.array([[
-        data_request.Latitude, 
-        data_request.Longitude, 
+        data_request.Latitude,
+        data_request.Longitude,
         data_request.ROT,
         data_request.SOG,
         data_request.COG,
@@ -76,7 +75,7 @@ def preprocess_raw_data(data_request: AIS_Sequence):
 def get_classifier_prediction(data):
     inputs = {classifier_model.get_inputs()[0].name: data}
     prediction = classifier_model.run(None, inputs)
-    return prediction[0] 
+    return prediction[0]
 
 def get_forecaster_prediction(data):
     inputs = {forecaster_model.get_inputs()[0].name: data}
@@ -98,7 +97,7 @@ def predict_trawling(data_request: AIS_Sequence):
     try:
         # First, use the classifier model to detect if trawling is occurring
         classifier_prediction = get_classifier_prediction(input_data)
-        
+
         print("Prediction probabilities:")
         print(classifier_prediction[0])
 
