@@ -1,5 +1,6 @@
 import torch
 from torch.utils.data import Dataset, DataLoader
+import numpy as np
 # from petastorm.pytorch import DataLoader
 # from petastorm.reader import make_batch_reader
 
@@ -48,6 +49,18 @@ class Classifier_Dataloader2(Dataset):
 
     def __getitem__(self, idx):
         return self.X[idx], self.y[idx]
+
+class Classifier_Dataloader_with_MMSI(torch.utils.data.Dataset):
+    def __init__(self, X_sequences, y_labels, mmsi_array=None):
+        self.X = torch.tensor(X_sequences, dtype=torch.float32)
+        self.y = torch.tensor(y_labels, dtype=torch.float32)
+        self.mmsi = mmsi_array if mmsi_array is not None else np.zeros(len(X_sequences))
+
+    def __len__(self):
+        return len(self.X)
+
+    def __getitem__(self, idx):
+        return self.X[idx], self.y[idx], self.mmsi[idx]
 
 # def get_sequence_data_loader(data_path, batch_size=32, num_epochs=1):
 #     return DataLoader(
