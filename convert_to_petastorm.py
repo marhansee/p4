@@ -14,8 +14,8 @@ from pyspark.sql.types import FloatType, IntegerType, LongType
 # ----------------- Command-line args -----------------
 
 parser = argparse.ArgumentParser(description="Convert prod-ready Parquet folders to a single Petastorm dataset.")
-parser.add_argument('--mode', choices=['train', 'test'], required=True,
-                    help="Mode: 'train' or 'test'")
+parser.add_argument('--mode', choices=['train', 'test','val'], required=True,
+                    help="Mode: 'train', 'val' or 'test'")
 parser.add_argument('--version', type=str, required=True,
                     help="Target version (e.g., v1, v2, v3). Must start with 'v' followed by a number.")
 args = parser.parse_args()
@@ -31,6 +31,9 @@ if args.mode == 'train':
 elif args.mode == 'test':
     input_folder = f"/ceph/project/gatehousep4/data/test_labeled/{args.version}"
     output_path = f"/ceph/project/gatehousep4/data/petastorm/test/{args.version}"
+elif args.mode == 'val':
+    input_folder = f"/ceph/project/gatehousep4/data/val_labeled/{args.version}"
+    output_path = f"/ceph/project/gatehousep4/data/petastorm/val/{args.version}"
 else:
     raise ValueError("Invalid --mode")
 
@@ -52,7 +55,7 @@ fields = [
     UnischemaField('Draught',         np.float32, (), ScalarCodec(FloatType()), False),
     UnischemaField('trawling',        np.int32,   (), ScalarCodec(IntegerType()), False),
 ]
-for i in range(1, 21):
+for i in range(1, 121):
     fields.append(UnischemaField(f'future_lat_{i}', np.float32, (), ScalarCodec(FloatType()), True))
     fields.append(UnischemaField(f'future_lon_{i}', np.float32, (), ScalarCodec(FloatType()), True))
 

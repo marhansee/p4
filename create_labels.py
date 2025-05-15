@@ -264,6 +264,17 @@ def drop_mmsis_with_nulls(df):
     df_clean = df.join(good_mmsis, on="MMSI", how="inner")
     return df_clean
 
+def drop_duplicate_mmsi_imo(df):
+    """Drop MMSI-IMO pairs that appear with more than one unique vessel name (or gear type, etc.)"""
+    id_counts = df.groupBy("MMSI", "IMO") \
+                  .agg(F.countDistinct("Name").alias("name_count"))
+
+    unique_ids = id_counts.filter(F.col("name_count") == 1) \
+                          .select("MMSI", "IMO")
+
+    df = df.join(unique_ids, on=["MMSI", "IMO"], how="inner")
+    return df
+
 
 def resample_to_fixed_interval(df):
     """Resample data to fixed 10-second intervals using UNIX epoch seconds."""
@@ -329,7 +340,7 @@ def preprocess_all_files():
         df = load_csv_file(path)
 
         # Data processing
-
+        df = drop_duplicate_mmsi_imo(df)
         df = drop_class_b(df)
         df = drop_unknown_label(df)
         df = filter_relevant_columns(df)
