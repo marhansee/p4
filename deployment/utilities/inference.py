@@ -39,13 +39,13 @@ class AISInferenceModel:
             forecast = forecaster_output[0][0]
         if forecast is not None:
             print("Forecast coordinates at future steps:")
-            for step in range(len(forecast)):
-                if step <= len(forecast):
-                    lat, lon = forecast[step - 1]
-                    print(f"Step {step:>2}: Latitude = {lat:.5f}, Longitude = {lon:.5}")
+            key_steps = [0, 1, 2, 4, 9, 19]
+            for step in key_steps:
+                if step < len(forecast):
+                    lat, lon = forecast[step]
+                    print(f"Step {step + 1:>2}: Latitude = {lat:.5f}, Longitude = {lon:.5f}")
                 else:
-                    print(f"Step {step:>2}: Not available (Only {len(forecast)}) steps predicted.")
-
+                    print(f"Step {step + 1:>2}: Not available (only {len(forecast)}) steps predicted.")
 
         return label, probability, logit, forecast
 

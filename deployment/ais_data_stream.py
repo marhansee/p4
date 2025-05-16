@@ -19,7 +19,7 @@ classifier_path = config["model_paths"]["classifier"]
 forecaster_path = config["model_paths"]["forecaster"]
 
 model = AISInferenceModel(classifier_path=classifier_path,
-                          forecaster_path=forecaster_path,verbose = True)
+                          forecaster_path=forecaster_path,verbose = False)
 
 def run_model(input_tensor, window):
 

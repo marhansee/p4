@@ -52,7 +52,7 @@ models = {
             dropout_prob=0.2
         ),
         'weight_path': 'models/classifiers/snapshots/lstm_finalv3.pth',
-        'onnx_path': 'models/classifiers/onnx/lstm_finalv3.onnx'
+        'onnx_path': 'models/classifiers/onnx/lstm_finalv3_clf.onnx'
     }
 }
 
