@@ -47,8 +47,8 @@ class CNN1DForecaster(nn.Module):
 def main():
     n_features = 10
     sequence_length = 60
-    dummy_input = torch.randn(1, n_features, sequence_length)
-    model = CNN1DForecaster(n_features=n_features, seq_len=sequence_length)
+    dummy_input = torch.randn(1, sequence_length, n_features)
+    model = CNN1DForecaster(n_features=n_features, seq_len=sequence_length, output_seq_len=15)
     output = model(dummy_input)
 
     print("Output shape:", output.shape)  # Expecting (1, 20, 2)

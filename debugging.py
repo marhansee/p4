@@ -70,4 +70,18 @@ def main():
 
 
 if __name__ == '__main__':
-    main()
+    # main()
+    lst = [1, 5, 10, 15]
+    mapping = {
+        1: 6,
+        5: 30,
+        10: 60,
+        15: 90
+    }
+
+    num = 10 
+
+    target_features = [f'future_lat_{i}' for i in range(6, mapping[num]+1, 6)] + \
+        [f'future_lon_{i}' for i in range(6, mapping[num]+1, 6)]
+    
+    print(target_features)

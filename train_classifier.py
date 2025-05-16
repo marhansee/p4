@@ -150,6 +150,9 @@ def main():
 
     input_features = ['MMSI', 'timestamp_epoch','Latitude', 'Longitude', 'ROT', 'SOG', 'COG', 'Heading', 
                       'Width', 'Length', 'Draught']
+    
+    input_features = ['MMSI', 'timestamp_epoch','Latitude', 'Longitude']
+
     target_feature = ['trawling']
     
     X_train, y_train = load_data(

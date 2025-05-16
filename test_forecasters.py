@@ -11,6 +11,7 @@ import numpy as np
 import argparse
 import torch.nn.functional as F
 import sys
+from tqdm import tqdm
 
 # Load utils
 from utils.train_utils import load_config_file, load_scaler_json, load_data, scale_data, make_sequences, inverse_scale_lat_lon
@@ -28,7 +29,7 @@ def inference_onnx(model_path, dataloader, device='cpu'):
     mae_lat_list, mae_lon_list, mae_mean_list = [], [], []
     inference_times = []
 
-    for inputs, targets in dataloader:
+    for inputs, targets in tqdm(dataloader, desc="Running inference"):
         inputs, targets = inputs.to(device), targets.to(device)
         batch_size = targets.size(0)
         targets = targets.view(batch_size, 2, 20).transpose(1, 2)
@@ -129,6 +130,7 @@ def main():
     parser = argparse.ArgumentParser(description='Test Forecaster')
     parser.add_argument('--snapshot_name', type=str, required=True, help='Name of model you want to test')
     parser.add_argument('--seq_length', type=int, required=True, help="Input sequence length")
+    parser.add_argument('--output_seq_len', type=int, required=True, help="Output sequence length in minutes")
     args = parser.parse_args()
 
     # Make folders for results and snapshots
@@ -147,9 +149,20 @@ def main():
 
     input_features = ['MMSI', 'timestamp_epoch','Latitude', 'Longitude', 'ROT', 'SOG', 'COG', 'Heading', 
                       'Width', 'Length', 'Draught']
+
+    # input_features = ['MMSI', 'timestamp_epoch','Latitude', 'Longitude'] # Ablation study
     
-    target_features = [f'future_lat_{i}' for i in range(6, 121, 6)] + \
-           [f'future_lon_{i}' for i in range(6, 121, 6)]
+    # Define mapping for output sequence length in minutes
+    mapping = {
+        1: 6,
+        5: 30,
+        10: 60,
+        15: 90,
+        20: 120
+    }
+
+    target_features = [f'future_lat_{i}' for i in range(6, mapping[args.output_seq_len]+1, 6)] + \
+           [f'future_lon_{i}' for i in range(6, mapping[args.output_seq_len]+1, 6)]
     
     X_test, y_test = load_data(
         parquet_files=test_parquet_files,

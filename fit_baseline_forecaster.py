@@ -74,7 +74,7 @@ def main():
     avg_mae_lon = lon_mae.mean()
     avg_mae_total = (avg_mae_lat + avg_mae_lon) / 2
     
-    print(f"Lat MAE: {lat_mae:.4f} | Lon MAE: {lon_mae:.4f}")
+    print(f"Avg Lat MAE: {avg_mae_lat:.4f} | Avg Lon MAE: {avg_mae_lon:.4f}")
 
     results_path = os.path.join(results_dir, "results.txt")
     with open(results_path, "w") as f:

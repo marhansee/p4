@@ -34,13 +34,13 @@ warnings.filterwarnings('ignore')
 
 
 
-def train(model, device, train_loader, optimizer, epoch, scaler):
+def train(model, device, train_loader, optimizer, epoch, scaler, config):
     model.train()
     total_loss = 0
     for batch_idx, (data, target) in enumerate(train_loader):
         data, target = data.to(device), target.to(device)
         batch_size = target.size(0)
-        target = target.view(batch_size, 2, 20).transpose(1, 2)
+        target = target.view(batch_size, 2, config['arch_param']['output_seq_len']).transpose(1, 2)
         optimizer.zero_grad()
 
         # Implement AMP
@@ -71,7 +71,7 @@ def train(model, device, train_loader, optimizer, epoch, scaler):
     wandb.log({"Epoch Train Loss": epoch_loss, "Epoch": epoch})
     
 
-def evaluate(model, device, test_loader):
+def evaluate(model, device, test_loader, config):
     model.eval()
     total_mae_lat = 0
     total_mae_lon = 0
@@ -82,7 +82,7 @@ def evaluate(model, device, test_loader):
         for data, target in test_loader:
             data, target = data.to(device), target.to(device)
             batch_size = target.size(0)
-            target = target.view(batch_size, 2, 20).transpose(1, 2)
+            target = target.view(batch_size, 2, config['arch_param']['output_seq_len']).transpose(1, 2)
 
             start_time = time.time()
             output = model(data)
@@ -140,10 +140,21 @@ def main():
 
 
     input_features = ['MMSI','timestamp_epoch','Latitude', 'Longitude', 'ROT', 'SOG', 'COG', 'Heading', 
-                      'Width', 'Length', 'Draught']
+                     'Width', 'Length', 'Draught']
 
-    target_features = [f'future_lat_{i}' for i in range(6, 121, 6)] + \
-           [f'future_lon_{i}' for i in range(6, 121, 6)]
+    # input_features = ['MMSI', 'timestamp_epoch', 'Latitude', 'Longitude']
+
+    # Define mapping for output sequence length in minutes
+    mapping = {
+        1: 6,
+        5: 30,
+        10: 60,
+        15: 90,
+        20: 120
+    }
+
+    target_features = [f'future_lat_{i}' for i in range(6, mapping[config['arch_param']['output_seq_len']]+1, 6)] + \
+           [f'future_lon_{i}' for i in range(6, mapping[config['arch_param']['output_seq_len']]+1, 6)]
     # lons = [f'future_lon_{i}' for i in range(6, 121, 6)]
 
     # target_features = [item for pair in zip(lats, lons) for item in pair]
@@ -283,7 +294,7 @@ def main():
     results_path = os.path.join(f"forecast_results/{config['model_name']}", f"{experiment_name}.txt")
     weight_path = os.path.join(f"snapshots/forecast/{config['model_name']}", f"{experiment_name}.pth")
 
-    early_stopping = EarlyStopping(7, min_delta=0.01)
+    early_stopping = EarlyStopping(10, min_delta=0.01)
     # Training loop
     print("Initializing training...")
 
@@ -296,12 +307,14 @@ def main():
             optimizer=optimizer,
             epoch=epoch,
             scaler=scaler,
+            config=config
         )
 
         avg_mae_lat, avg_mae_lon, avg_inference_time = evaluate(
             model=ddp_model, 
             device=device_id, 
-            test_loader=val_loader
+            test_loader=val_loader,
+            config=config
         )
 
         val_loss = (avg_mae_lat + avg_mae_lon) / 2  

@@ -53,7 +53,7 @@ class Seq2SeqLSTM(nn.Module):
             out_dec, (hidden_dec, cell_dec) = self.decoder(decoder_input, (hidden_dec, cell_dec))
             pred = self.fc_out(out_dec)  # (batch, 1, output_size)
             outputs.append(pred)
-            decoder_input = pred  # feed predicted output as next input (non-autoregressive would feed zeros or teacher forcing here)
+            decoder_input = pred 
 
         # Concatenate all predictions: (batch, output_seq_len, output_size)
         outputs = torch.cat(outputs, dim=1)
