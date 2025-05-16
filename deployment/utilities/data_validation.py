@@ -1,4 +1,5 @@
-def missing_data_check(df, mmsi=None, log_fn=print):
+
+def missing_data_check(df, window_size, mmsi=None, log_fn=print):
     """
     Validates whether a 60-step input window is safe for inference.
 
@@ -14,6 +15,7 @@ def missing_data_check(df, mmsi=None, log_fn=print):
     Returns:
         bool: True if safe to infer, False if not.
     """
+
     expected_cols = [
         "Latitude", "Longitude", "ROT", "SOG", "COG",
         "Heading", "Width", "Length", "Draught"
@@ -34,8 +36,8 @@ def missing_data_check(df, mmsi=None, log_fn=print):
         log_fn(f"MMSI {mmsi or '?'} — partly null columns: {partly_null}")
         return False
 
-    if len(df) < 60:
-        log_fn(f"MMSI {mmsi or '?'} — window too short: {len(df)} < 60")
+    if len(df) < window_size:
+        log_fn(f"MMSI {mmsi or '?'} — window too short: {len(df)} < {window_size}")
         return False
 
     return True

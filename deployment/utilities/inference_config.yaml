@@ -1,0 +1,8 @@
+MMSI: 220141000
+window_size: 30
+step_size: 1
+data_path: "aisdk-2024-06-04_fishing_labeled.csv"
+cable_coordinates_path : "/home/martin-birch/p4/data/cable_coordinates.csv"
+model_paths:
+  classifier: /home/martin-birch/p4/deployment/models/lstm_seq_5min_clf.onnx
+  forecaster: /home/martin-birch/p4/deployment/models/s2s_bigru_5min_fc.onnx
