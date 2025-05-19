@@ -91,7 +91,7 @@ def preprocess_vessel_df(input_path: str, MMSI: int):
     df = filter_relevant_columns(df)
     df = drop_duplicates(df)
     df = resample_to_fixed_interval(df)
-    df = normalize_columns(df, stats_path = "/home/martin-birch/p4/data/train_norm_stats.json", exclude =["trawling"])
+    df = normalize_columns(df, stats_path = "./data/train_norm_stats.json", exclude =["trawling"])
 
 
     return df
