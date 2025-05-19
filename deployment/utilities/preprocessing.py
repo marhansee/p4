@@ -1,5 +1,5 @@
 import pandas as pd
-import numpy as np
+import json
 
 continuous_cols: list[str] = ["Latitude", "Longitude", "ROT", "SOG", "COG", "Heading", "Draught"]
 static_cols: list[str] = ["Width", "Length", "trawling"]
@@ -9,6 +9,25 @@ clamp_limits = {
     "SOG": (0, 40),
     "ROT": (-90, 90),
 }
+
+def normalize_columns(df, stats_path: str, exclude: list = []):
+
+    with open(stats_path, "r") as f:
+        stats = json.load(f)
+
+    df = df.copy()
+    for col in df.columns:
+        if col in stats and col not in exclude:
+            mean = stats[col]["mean"]
+            std = stats[col]["std"]
+            if std != 0:
+                df[col] = (df[col] - mean) / std
+            else:
+                df[col] = 0
+    return df
+
+
+
 
 
 def load_csv(input_path):
@@ -72,6 +91,8 @@ def preprocess_vessel_df(input_path: str, MMSI: int):
     df = filter_relevant_columns(df)
     df = drop_duplicates(df)
     df = resample_to_fixed_interval(df)
+    df = normalize_columns(df, stats_path = "/home/martin-birch/p4/data/train_norm_stats.json", exclude =["trawling"])
+
 
     return df
 
