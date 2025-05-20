@@ -315,6 +315,22 @@ def add_future_lags(df, horizon=20):
 
     return df
 
+def reduce_skewness(df):
+
+    """Automatically log-transform features if skewness is high."""
+    for col in skewed_positive:
+        skew_val = df.select(F.skewness(col).alias("skew")).collect()[0]["skew"]
+        if abs(skew_val) > 1:
+            print(f"Applying log1p() to positively skewed column: {col} (skew={skew_val:.2f})")
+            df = df.withColumn(col, F.log1p(F.col(col)))
+
+    for col in skewed_signed:
+        skew_val = df.select(F.skewness(col).alias("skew")).collect()[0]["skew"]
+        if abs(skew_val) > 1:
+            print(f"Applying symmetric log1p() to signed skewed column: {col} (skew={skew_val:.2f})")
+            df = df.withColumn(col, F.when(F.col(col) >= 0, F.log1p(F.col(col)))
+                                     .otherwise(-F.log1p(-F.col(col))))
+
 def preprocess_all_files():
     input_folder, output_folder = get_paths()
     all_files = os.listdir(input_folder)
@@ -342,8 +358,10 @@ def preprocess_all_files():
         df = interpolate_continuous_features(df)
         df = forward_fill_features(df)
         df = drop_mmsis_with_nulls(df)
+
         df = clamp_features(df)
         df = add_future_lags(df)
+        df = reduce_skewness(df)
         df = drop_rows_with_null_future_coords(df)
 
         # Saving processed data

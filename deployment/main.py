@@ -28,9 +28,26 @@ forecaster_path = config["model_paths"]["forecaster"]
 script_dir = os.path.dirname(os.path.abspath(__file__))
 stats_path = os.path.join(script_dir, "./data/train_norm_stats.json")
 
+with open(stats_path, "r") as f:
+    norm_stats = json.load(f)
+
 model = AISInferenceModel(classifier_path=classifier_path, forecaster_path=forecaster_path, verbose=False)
 cable_lines = load_cable_lines(cable_path)
 buffered_zone = build_buffered_zone(cable_lines)
+
+def denormalize_column(values, col_name):
+    mean = norm_stats[col_name]["mean"]
+    std = norm_stats[col_name]["std"]
+    return [(v * std + mean) for v in values]
+
+def convert(o):
+    if isinstance(o, (np.float32, np.float64)):
+        return float(o)
+    if isinstance(o, (np.int32, np.int64)):
+        return int(o)
+    if isinstance(o, np.ndarray):
+        return o.tolist()
+    raise TypeError(f"Object of type {o.__class__.__name__} is not JSON serializable")
 
 app = FastAPI()
 
@@ -102,14 +119,11 @@ async def batch_predict(file: UploadFile = File(...), mmsi: int = Form(...)):
     df = drop_duplicates(df)
     df = resample_to_fixed_interval(df)
 
-    print(f"\n--- DEBUG FOR MMSI {mmsi} ---")
-    print(f"Data points after preprocessing: {len(df)}")
-    print(f"Window size: {window_size}")
-
     df = normalize_columns(df, stats_path=stats_path, exclude=["trawling"])
     df = df.drop(["# Timestamp", "MMSI", "trawling"], axis=1)
 
     results = []
+
 
     for window in sliding_windows(df, window_size, step_size):
 
@@ -123,33 +137,49 @@ async def batch_predict(file: UploadFile = File(...), mmsi: int = Form(...)):
             if forecast is not None:
                 zone_steps = all_forecast_steps_in_zone(forecast, buffered_zone)
 
+                lat_norm = window["Latitude"].values
+                lon_norm = window["Longitude"].values
+                lat = denormalize_column(lat_norm, "Latitude")
+                lon = denormalize_column(lon_norm, "Longitude")
+                input_coords = list(zip(lat, lon))
                 results.append({
                     "forecast": forecast.tolist(),
                     "zone_alert": len(zone_steps) > 0,
                     "fishing_confidence": round(probability, 4),
                     "zone_entry_step": zone_steps[0] if zone_steps else None,
-                    "zone_steps": zone_steps
+                    "zone_steps": zone_steps,
+                    "input": input_coords
                 })
 
     # Save results to JSON file for visualization
     results_path = os.path.join(script_dir, "data/results.json")
 
     with open(results_path, "w") as f:
-        json.dump({"results": results}, f, indent=2)
-
+        json.dump({"results": results}, f, indent=2, default = convert)
+    for result in results:
+        if isinstance(result.get("fishing_confidence"), np.floating):
+            result["fishing_confidence"] = float(result["fishing_confidence"])
     print(f"Saved prediction results to {results_path}")
 
     # Return results in API response
     return {"results": results}
 
 @app.get("/map")
-
 def get_map():
     map_path = os.path.join(script_dir, "forecast_map.html")
+
+    try:
+        # Dynamically generate map
+        import subprocess
+        subprocess.run(["python3", "visualize_forecast.py"], check=True, cwd=script_dir)
+    except subprocess.CalledProcessError as e:
+        return {"error": f"Failed to generate map: {str(e)}"}
+
     if not os.path.exists(map_path):
         return {"error": f"Map file not found at {map_path}"}
 
     return FileResponse(map_path, media_type="text/html")
+
 if __name__ == "__main__":
 
     uvicorn.run(app, host="0.0.0.0", port=8000)
