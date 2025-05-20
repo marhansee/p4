@@ -1,6 +1,6 @@
 MMSI: 220334000
 window_size: 30
-step_size: 1
+step_size: 2
 data_path: "aisdk-2025-03-19_fishing_labeled.csv"
 cable_coordinates_path : "./data/cable_coordinates.csv"
 normalization_stats_path: "./data/train_norm_stats.json"

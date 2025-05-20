@@ -26,10 +26,6 @@ def normalize_columns(df, stats_path: str, exclude: list = []):
                 df[col] = 0
     return df
 
-
-
-
-
 def load_csv(input_path):
     df = pd.read_csv(input_path, header=0)
     return df

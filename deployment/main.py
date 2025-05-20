@@ -6,7 +6,8 @@ from utilities.preprocessing import pick_vessel, drop_class_b, filter_relevant_c
 from utilities.data_validation import missing_data_check
 from utilities.sliding_window import sliding_windows
 from utilities.inference import AISInferenceModel
-from utilities.zone_check import load_cable_lines, any_forecast_in_zone, build_buffered_zone, all_forecast_steps_in_zone, vessel_near_any_cable
+from utilities.zone_check import load_cable_lines, any_forecast_in_zone, build_buffered_zone, forecast_path_crosses_zone, vessel_near_any_cable
+from shapely.geometry import Point
 import numpy as np
 import yaml
 import json
@@ -33,7 +34,10 @@ with open(stats_path, "r") as f:
 
 model = AISInferenceModel(classifier_path=classifier_path, forecaster_path=forecaster_path, verbose=False)
 cable_lines = load_cable_lines(cable_path)
-buffered_zone = build_buffered_zone(cable_lines)
+
+buffered_zone_1602 = build_buffered_zone(cable_lines, buffer_meters=1602)
+buffered_zone_2136 = build_buffered_zone(cable_lines, buffer_meters=2136)
+
 
 def denormalize_column(values, col_name):
     mean = norm_stats[col_name]["mean"]
@@ -97,7 +101,7 @@ async def predict(data: List[AISDataPoint]):
 
     if forecast is not None:
         response["forecast"] = forecast.tolist()
-        response["zone_alert"] = any_forecast_in_zone(forecast, buffered_zone)
+        response["zone_alert"] = any_forecast_in_zone(forecast, buffered_zone_1602)
 
     return response
 
@@ -109,11 +113,6 @@ async def batch_predict(file: UploadFile = File(...), mmsi: int = Form(...)):
     df = pick_vessel(df, mmsi)
     df_raw = df.copy()
     df_raw.to_csv("data/last_input.csv", index=False)
-    latest_row = df.sort_values("# Timestamp").dropna(subset=["Latitude", "Longitude"]).iloc[-1]
-    curr_lat = latest_row["Latitude"]
-    curr_lon = latest_row["Longitude"]
-    if not vessel_near_any_cable(curr_lat, curr_lon, cable_lines, radius_m=100000):
-        return {"message": "Vessel is outside of risk zone, no prediction needed."}
     df = drop_class_b(df)
     df = filter_relevant_columns(df)
     df = drop_duplicates(df)
@@ -123,7 +122,6 @@ async def batch_predict(file: UploadFile = File(...), mmsi: int = Form(...)):
     df = df.drop(["# Timestamp", "MMSI", "trawling"], axis=1)
 
     results = []
-
 
     for window in sliding_windows(df, window_size, step_size):
 
@@ -135,21 +133,35 @@ async def batch_predict(file: UploadFile = File(...), mmsi: int = Form(...)):
 
             label, probability, logit, forecast = model.predict(input_tensor)
             if forecast is not None:
-                zone_steps = all_forecast_steps_in_zone(forecast, buffered_zone)
+                start_lat, start_lon = forecast[0]
+                start_point = Point(start_lon, start_lat)
+
+                crosses_critical = forecast_path_crosses_zone(forecast, buffered_zone_1602)
+                inside_entry_zone = buffered_zone_2136.contains(start_point)
+
+                # Risk level logic
+                if label == 1:  # Trawling
+                    if crosses_critical:
+                        risk_level = 3
+                    elif inside_entry_zone:
+                        risk_level = 2
+                    else:
+                        risk_level = 1
+
 
                 lat_norm = window["Latitude"].values
                 lon_norm = window["Longitude"].values
                 lat = denormalize_column(lat_norm, "Latitude")
                 lon = denormalize_column(lon_norm, "Longitude")
                 input_coords = list(zip(lat, lon))
+
                 results.append({
-                    "forecast": forecast.tolist(),
-                    "zone_alert": len(zone_steps) > 0,
+                    "forecast": forecast,
                     "fishing_confidence": round(probability, 4),
-                    "zone_entry_step": zone_steps[0] if zone_steps else None,
-                    "zone_steps": zone_steps,
+                    "risk_level": risk_level,
                     "input": input_coords
                 })
+
 
     # Save results to JSON file for visualization
     results_path = os.path.join(script_dir, "data/results.json")
@@ -162,7 +174,7 @@ async def batch_predict(file: UploadFile = File(...), mmsi: int = Form(...)):
     print(f"Saved prediction results to {results_path}")
 
     # Return results in API response
-    return {"results": results}
+    return json.loads(json.dumps({"results": results}, default=convert))
 
 @app.get("/map")
 def get_map():

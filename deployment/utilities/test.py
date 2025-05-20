@@ -37,7 +37,7 @@ from zone_check import load_cable_lines, build_buffered_zone
 import os
 
 # === CONFIG ===
-AIS_CSV = "/home/martin/p4/deployment/aisdk-2024-06-04_fishing_labeled.csv"
+AIS_CSV = "/home/martin/p4/deployment/aisdk-2025-02-22_fishing_labeled.csv"
 CABLE_CSV = "/home/martin/p4/deployment/data/cable_coordinates.csv"
 BUFFER_METERS = 2200  # ≈ 0.87 NM
 OUTPUT_PATH = "zone_crossers.txt"

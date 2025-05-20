@@ -52,3 +52,11 @@ def vessel_near_any_cable(current_lat, current_lon, cable_lines, radius_m=2200):
             if dist <= radius_m:
                 return True
     return False
+
+
+def forecast_path_crosses_zone(forecast, buffered_zone):
+    """
+    Checks if the line formed by the forecast trajectory intersects the critical zone.
+    """
+    line = LineString([(lon, lat) for lat, lon in forecast])  # flip to lon, lat for Shapely
+    return line.intersects(buffered_zone)
