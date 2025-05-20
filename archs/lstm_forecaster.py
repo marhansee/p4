@@ -17,16 +17,23 @@ class LSTMModel(nn.Module):
             batch_first=True, 
             dropout=dropout_prop
         )
-        self.fc = nn.Linear(self.hidden_size, self.output_size)
+        # self.fc = nn.Linear(self.hidden_size, self.output_size)
+        self.fc = nn.Linear(self.hidden_size, self.output_seq_len * self.output_size)
 
     def forward(self, x):
         batch_size = x.size(0)
         h0 = torch.zeros(self.num_layers, batch_size, self.hidden_size).to(x.device)
         c0 = torch.zeros(self.num_layers, batch_size, self.hidden_size).to(x.device)
 
-        out, _ = self.lstm(x, (h0, c0))  # (batch, seq_len, hidden)
-        out = out[:, -self.output_seq_len:, :]  # Take the last 20 steps
-        out = self.fc(out)  # (batch, 20, 2)
+        # out, _ = self.lstm(x, (h0, c0))  # (batch, seq_len, hidden)
+        # out = out[:, -self.output_seq_len:, :]  # Take the last 20 steps
+        # out = self.fc(out)  # (batch, 20, 2)
+
+        _, (hn, _) = self.lstm(x, (h0, c0))  # hn: (num_layers, batch, hidden)
+        final_hidden = hn[-1]  # (batch, hidden)
+
+        out = self.fc(final_hidden)  # (batch, output_seq_len * output_size)
+        out = out.view(batch_size, self.output_seq_len, -1)  # (batch, 20, output_size)
         return out
 
 def main():
