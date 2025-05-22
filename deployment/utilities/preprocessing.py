@@ -45,15 +45,16 @@ def filter_relevant_columns(df):
 
 
 def drop_duplicates(df):
-    df = df.drop_duplicates(subset=['# Timestamp', 'MMSI'])
+    df = df.drop_duplicates(subset=['# Timestamp'])
     return df
 
-
 def resample_to_fixed_interval(df):
-    df['# Timestamp'] = pd.to_datetime(df['# Timestamp'])
+    # Aggregate duplicates first
+    df = df.groupby('# Timestamp').agg('first').reset_index()
 
-    df = df.sort_values("# Timestamp")
-    df = df.set_index('# Timestamp')
+    # Convert and set datetime index
+    df['# Timestamp'] = pd.to_datetime(df['# Timestamp'])
+    df = df.sort_values("# Timestamp").set_index('# Timestamp')
 
     # Resample to 10s intervals
     df_resampled = df.resample('10s').asfreq()
@@ -61,22 +62,24 @@ def resample_to_fixed_interval(df):
     # Forward-fill static features
     for col in ["MMSI"] + static_cols:
         if col in df_resampled.columns:
-            df_resampled[col] = df_resampled[col].ffill()
-
-    for col in ["MMSI"] + static_cols:
-        if col in df_resampled.columns:
-            df_resampled[col] = df_resampled[col].bfill()
+            df_resampled[col] = df_resampled[col].ffill().bfill()
 
     # Interpolate continuous features
     for col in continuous_cols:
         if col in df_resampled.columns:
             df_resampled[col] = df_resampled[col].interpolate(method='linear', limit_direction='both')
+
     # Clamp known limits
     for col, (low, high) in clamp_limits.items():
         if col in df_resampled.columns:
             df_resampled[col] = df_resampled[col].clip(lower=low, upper=high)
 
     return df_resampled.reset_index()
+
+def denormalize_column(values, col_name, norm_stats):
+    mean = norm_stats[col_name]["mean"]
+    std = norm_stats[col_name]["std"]
+    return [(v * std + mean) for v in values]
 
 
 
@@ -91,4 +94,3 @@ def preprocess_vessel_df(input_path: str, MMSI: int):
 
 
     return df
-
