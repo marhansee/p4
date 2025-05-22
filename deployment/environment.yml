@@ -1,0 +1,19 @@
+name: p4-deployment
+channels:
+  - defaults
+  - conda-forge
+dependencies:
+  - python=3.12
+  - numpy
+  - pandas
+  - pyarrow
+  - requests
+  - shapely
+  - onnxruntime
+  - pyyaml
+  - fastapi
+  - uvicorn
+  - geopy
+  - pip
+  - python-multipart
+  - folium

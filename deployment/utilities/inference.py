@@ -5,11 +5,27 @@ import os
 
 class AISInferenceModel:
 
-    def __init__(self, classifier_path: str, forecaster_path: str, verbose=True):
+    def __init__(self, classifier_path, forecaster_path,
+                 fallback_classifier_path=None, fallback_forecaster_path=None,
+                 verbose=True):
         self.classifier = ort.InferenceSession(classifier_path)
         self.classifier_input_name = self.classifier.get_inputs()[0].name
+
         self.forecaster = ort.InferenceSession(forecaster_path)
         self.forecaster_input_name = self.forecaster.get_inputs()[0].name
+
+        self.fallback_classifier = None
+        self.fallback_classifier_input_name = None
+        if fallback_classifier_path:
+            self.fallback_classifier = ort.InferenceSession(fallback_classifier_path)
+            self.fallback_classifier_input_name = self.fallback_classifier.get_inputs()[0].name
+
+        self.fallback_forecaster = None
+        self.fallback_forecaster_input_name = None
+        if fallback_forecaster_path:
+            self.fallback_forecaster = ort.InferenceSession(fallback_forecaster_path)
+            self.fallback_forecaster_input_name = self.fallback_forecaster.get_inputs()[0].name
+
         self.verbose = verbose
 
         stats_path = os.path.join(os.path.dirname(__file__), "../data/train_norm_stats.json")
@@ -40,27 +56,33 @@ class AISInferenceModel:
     def sigmoid(self, x:float):
         return 1 / (1 + np.exp(-x))
 
-    def predict(self, input_tensor: np.ndarray):
+    def predict(self, input_tensor: np.ndarray, use_fallback: bool = False):
+        if use_fallback and self.fallback_classifier:
+            clf_session = self.fallback_classifier
+            clf_input_name = self.fallback_classifier_input_name
+        else:
+            clf_session = self.classifier
+            clf_input_name = self.classifier_input_name
 
-        classifier_output = self.classifier.run(None, {self.classifier_input_name: input_tensor})
+        classifier_output = clf_session.run(None, {clf_input_name: input_tensor})
         logit = classifier_output[0][0][0]
         probability = self.sigmoid(logit)
         label = int(probability >= 0.5)
-        if self.verbose:
-            print(f"Logit: {logit:.4f}, Probability: {probability:.4f}, Label: {label}")
+
         forecast = None
         if label == 1:
-            forecaster_output = self.forecaster.run(None, {self.forecaster_input_name: input_tensor})
-            forecast = forecaster_output[0][0]
-        if forecast is not None and self.verbose:
-            print("Forecast coordinates at future steps:")
-            key_steps = [0, 1, 2, 4, 9, 19]
-            for step in key_steps:
-                if step < len(forecast):
-                    lat, lon = forecast[step]
-                    print(f"Step {step + 1:>2}: Latitude = {lat:.5f}, Longitude = {lon:.5f}")
-                else:
-                    print(f"Step {step + 1:>2}: Not available (only {len(forecast)}) steps predicted.")
+            if use_fallback and self.fallback_forecaster:
+                fc_session = self.fallback_forecaster
+                fc_input_name = self.fallback_forecaster_input_name
+            else:
+                fc_session = self.forecaster
+                fc_input_name = self.forecaster_input_name
+
+            forecast_output = fc_session.run(None, {fc_input_name: input_tensor})
+            forecast = forecast_output[0][0]
 
         return label, probability, logit, forecast
+
+
+
 

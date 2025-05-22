@@ -34,23 +34,22 @@
 import pandas as pd
 from shapely.geometry import Point
 from zone_check import load_cable_lines, build_buffered_zone
-import os
+from preprocessing import drop_class_b
 
 # === CONFIG ===
-AIS_CSV = "/home/martin/p4/deployment/aisdk-2025-02-22_fishing_labeled.csv"
-CABLE_CSV = "/home/martin/p4/deployment/data/cable_coordinates.csv"
+AIS_CSV = "/home/martin-birch/p4/deployment/aisdk-2025-03-23_fishing_labeled.csv"
+CABLE_CSV = "/home/martin-birch/p4/deployment/data/cable_coordinates.csv"
 BUFFER_METERS = 2200  # ≈ 0.87 NM
 OUTPUT_PATH = "zone_crossers.txt"
 
 # === Required columns ===
 required_columns = [
-    "Latitude", "Longitude", "ROT", "SOG", "COG",
-    "Heading", "Width", "Length", "Draught"
+    "Latitude", "Longitude",
 ]
 
 print(f"🔍 Loading AIS data from {AIS_CSV}")
 df = pd.read_csv(AIS_CSV)
-
+df = drop_class_b(df)
 # === Drop rows with missing required columns ===
 df_clean = df.dropna(subset=required_columns)
 valid_mmsis = df_clean["MMSI"].unique().tolist()

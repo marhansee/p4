@@ -1,8 +1,6 @@
 from utilities.preprocessing import preprocess_vessel_df
 from utilities.data_validation import missing_data_check
 from utilities.sliding_window import sliding_windows
-from utilities.inference import AISInferenceModel
-from utilities.zone_check import load_cable_lines, any_forecast_in_zone
 import numpy as np
 import yaml
 import json

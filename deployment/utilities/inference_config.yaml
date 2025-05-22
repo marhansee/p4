@@ -1,9 +1,14 @@
 MMSI: 220334000
 window_size: 30
-step_size: 2
+step_size: 10
 data_path: "aisdk-2025-03-19_fishing_labeled.csv"
 cable_coordinates_path : "./data/cable_coordinates.csv"
 normalization_stats_path: "./data/train_norm_stats.json"
+results_path: "./data/results.json"
+forecast_input_path: "./data/latest_forecast_input.csv"
+forecast_map_path: "forecast_map.html"
 model_paths:
   classifier: ./models/lstm_seq_5min_clf.onnx
   forecaster: ./models/s2s_lstm_seq_5min_fc.onnx
+  fallback_classifier: ./models/hybrid_seq5_latlon_clf.onnx
+  fallback_forecaster: ./models/s2s_lstm_seq5_latlon_fc.onnx

@@ -1,16 +1,20 @@
-FROM python:3.10-alpine
+FROM continuumio/miniconda3
 
-# Set the working directory in the container
+# Set working directory
 WORKDIR /app
 
-# Copy everything from the current directory to /app in the container
-COPY . /app
+# Copy environment and code
+COPY environment.yml .
+COPY . .
 
-# Install the required Python packages
-RUN pip install --no-cache-dir fastapi uvicorn onnxruntime numpy pydantic
+# Create Conda environment
+RUN conda env create -f environment.yml
 
-# Expose port 5000 to the outside
-EXPOSE 5000
+# Activate Conda env for all future RUNs and CMDs
+SHELL ["conda", "run", "-n", "p4-deployment", "/bin/bash", "-c"]
 
-# Start the FastAPI app using Uvicorn, specifying the correct app module location
-CMD ["uvicorn", "deployment.app:app", "--host", "0.0.0.0", "--port", "5000", "--reload"]
+# Expose FastAPI port
+EXPOSE 8000
+
+# Run your FastAPI app
+CMD ["conda", "run", "--no-capture-output", "-n", "p4-deployment", "uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]
