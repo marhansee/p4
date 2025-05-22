@@ -122,7 +122,7 @@ async def batch_predict(file: UploadFile = File(...), mmsi: int = Form(...)):
         current_lat = window["Latitude"].iloc[-1]
         current_lon = window["Longitude"].iloc[-1]
 
-        # Skip inference if vessel is too far from any cable line
+
         if not vessel_near_any_cable(current_lat, current_lon, cable_lines, radius_m=3738):
             continue
 
