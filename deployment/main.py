@@ -6,7 +6,7 @@ from utilities.preprocessing import pick_vessel, drop_class_b, filter_relevant_c
 from utilities.data_validation import missing_data_check, convert
 from utilities.sliding_window import sliding_windows
 from utilities.inference import AISInferenceModel
-from utilities.zone_check import load_cable_lines, any_forecast_in_zone, build_buffered_zone, forecast_path_crosses_zone
+from utilities.zone_check import load_cable_lines, any_forecast_in_zone, build_buffered_zone, forecast_path_crosses_zone, vessel_near_any_cable
 from shapely.geometry import Point
 import numpy as np
 import yaml
@@ -118,6 +118,13 @@ async def batch_predict(file: UploadFile = File(...), mmsi: int = Form(...)):
     results = []
 
     for window in sliding_windows(df, window_size, step_size):
+        # Extract the last point in the window as the current location
+        current_lat = window["Latitude"].iloc[-1]
+        current_lon = window["Longitude"].iloc[-1]
+
+        # Skip inference if vessel is too far from any cable line
+        if not vessel_near_any_cable(current_lat, current_lon, cable_lines, radius_m=3738):
+            continue
 
         use_fallback = not missing_data_check(window, window_size, verbose = False)
 
@@ -181,109 +188,109 @@ async def batch_predict(file: UploadFile = File(...), mmsi: int = Form(...)):
 
     return json.loads(json.dumps({"results": results}, default=convert))
 
-@app.post("/test_inference_timing")
-async def test_inference_timing(file: UploadFile = File(...), mmsi: int = Form(...)):
-
-    t0 = time.perf_counter()
-
-    contents = await file.read()
-    t1 = time.perf_counter()
-
-    df = pd.read_csv(io.StringIO(contents.decode("utf-8")))
-    df = pick_vessel(df, mmsi)
-    df = drop_class_b(df)
-    df = filter_relevant_columns(df)
-    df = drop_duplicates(df)
-    df = df.sort_values("# Timestamp")
-
-    try:
-        df = resample_to_fixed_interval(df)
-    except ValueError as e:
-        return {"error": f"Resampling failed: {str(e)}"}
-
-    if len(df) < window_size:
-        return {"error": f"Not enough resampled rows to form a window of size {window_size}"}
-
-
-    window = df.tail(window_size).copy()
-    t_start = pd.to_datetime(window["# Timestamp"].iloc[0])
-    t_end = pd.to_datetime(window["# Timestamp"].iloc[-1])
-    real_acquisition_seconds = (t_end - t_start).total_seconds()
-
-
-    with open(stats_path, "r") as f:
-        norm_stats = json.load(f)
-
-
-    for col in ["Latitude", "Longitude", "ROT", "SOG", "COG", "Heading", "Width", "Length", "Draught"]:
-        if col in window.columns:
-            window[col] = normalize_columns(window[col], col)
-
-    window = window.drop(["# Timestamp", "MMSI", "trawling"], axis=1, errors="ignore")
-
-    t2 = time.perf_counter()
-
-    use_fallback = not missing_data_check(window, window_size, verbose=False)
-
-    input_tensor = (
-        window[["Latitude", "Longitude"]].values.astype(np.float32).reshape(1, window_size, 2)
-        if use_fallback else
-        window[[
-            "Latitude", "Longitude", "ROT", "SOG", "COG",
-            "Heading", "Width", "Length", "Draught"
-        ]].values.astype(np.float32).reshape(1, window_size, 9)
-    )
-    t3 = time.perf_counter()
-
-
-    label, probability, logit, forecast = model.predict(input_tensor, use_fallback=use_fallback)
-
-    t4 = time.perf_counter()
-
-    if forecast is None:
-        return {"error": "Model did not produce a forecast"}
-
-
-    start_lat, start_lon = forecast[0]
-    start_point = Point(start_lon, start_lat)
-    crosses_critical = forecast_path_crosses_zone(forecast, buffered_zone_1602)
-    inside_entry_zone = buffered_zone_2136.contains(start_point)
-
-    risk_level = 0
-    if label == 1:
-        if crosses_critical:
-            risk_level = 3
-        elif inside_entry_zone:
-            risk_level = 2
-        else:
-            risk_level = 1
-
-    lat_norm = window["Latitude"].values
-    lon_norm = window["Longitude"].values
-    lat = denormalize_column(lat_norm, "Latitude", norm_stats)
-    lon = denormalize_column(lon_norm, "Longitude", norm_stats)
-    input_coords = list(zip(lat, lon))
-
-    result = {
-        "forecast": forecast.tolist(),
-        "fishing_confidence": float(probability),
-        "risk_level": int(risk_level),
-        "input": input_coords,
-        "used_fallback": use_fallback
-    }
-
-    return {
-        "result": result,
-        "timing_seconds": {
-            "estimated_real_acquisition_after_resampling": real_acquisition_seconds,
-            "file_read": round(t1 - t0, 4),
-            "preprocessing_and_resampling": round(t2 - t1, 4),
-            "tensor_building": round(t3 - t2, 4),
-            "inference": round(t4 - t3, 4),
-            "total_runtime_excluding_acquisition": round(t4 - t0, 4),
-            "total_runtime_including_acquisition": round(t4 - t0 + real_acquisition_seconds, 4)
-        }
-    }
+# @app.post("/test_inference_timing")
+# async def test_inference_timing(file: UploadFile = File(...), mmsi: int = Form(...)):
+#
+#     t0 = time.perf_counter()
+#
+#     contents = await file.read()
+#     t1 = time.perf_counter()
+#
+#     df = pd.read_csv(io.StringIO(contents.decode("utf-8")))
+#     df = pick_vessel(df, mmsi)
+#     df = drop_class_b(df)
+#     df = filter_relevant_columns(df)
+#     df = drop_duplicates(df)
+#     df = df.sort_values("# Timestamp")
+#
+#     try:
+#         df = resample_to_fixed_interval(df)
+#     except ValueError as e:
+#         return {"error": f"Resampling failed: {str(e)}"}
+#
+#     if len(df) < window_size:
+#         return {"error": f"Not enough resampled rows to form a window of size {window_size}"}
+#
+#
+#     window = df.tail(window_size).copy()
+#     t_start = pd.to_datetime(window["# Timestamp"].iloc[0])
+#     t_end = pd.to_datetime(window["# Timestamp"].iloc[-1])
+#     real_acquisition_seconds = (t_end - t_start).total_seconds()
+#
+#
+#     with open(stats_path, "r") as f:
+#         norm_stats = json.load(f)
+#
+#
+#     for col in ["Latitude", "Longitude", "ROT", "SOG", "COG", "Heading", "Width", "Length", "Draught"]:
+#         if col in window.columns:
+#             window[col] = normalize_columns(window[col], col)
+#
+#     window = window.drop(["# Timestamp", "MMSI", "trawling"], axis=1, errors="ignore")
+#
+#     t2 = time.perf_counter()
+#
+#     use_fallback = not missing_data_check(window, window_size, verbose=False)
+#
+#     input_tensor = (
+#         window[["Latitude", "Longitude"]].values.astype(np.float32).reshape(1, window_size, 2)
+#         if use_fallback else
+#         window[[
+#             "Latitude", "Longitude", "ROT", "SOG", "COG",
+#             "Heading", "Width", "Length", "Draught"
+#         ]].values.astype(np.float32).reshape(1, window_size, 9)
+#     )
+#     t3 = time.perf_counter()
+#
+#
+#     label, probability, logit, forecast = model.predict(input_tensor, use_fallback=use_fallback)
+#
+#     t4 = time.perf_counter()
+#
+#     if forecast is None:
+#         return {"error": "Model did not produce a forecast"}
+#
+#
+#     start_lat, start_lon = forecast[0]
+#     start_point = Point(start_lon, start_lat)
+#     crosses_critical = forecast_path_crosses_zone(forecast, buffered_zone_1602)
+#     inside_entry_zone = buffered_zone_2136.contains(start_point)
+#
+#     risk_level = 0
+#     if label == 1:
+#         if crosses_critical:
+#             risk_level = 3
+#         elif inside_entry_zone:
+#             risk_level = 2
+#         else:
+#             risk_level = 1
+#
+#     lat_norm = window["Latitude"].values
+#     lon_norm = window["Longitude"].values
+#     lat = denormalize_column(lat_norm, "Latitude", norm_stats)
+#     lon = denormalize_column(lon_norm, "Longitude", norm_stats)
+#     input_coords = list(zip(lat, lon))
+#
+#     result = {
+#         "forecast": forecast.tolist(),
+#         "fishing_confidence": float(probability),
+#         "risk_level": int(risk_level),
+#         "input": input_coords,
+#         "used_fallback": use_fallback
+#     }
+#
+#     return {
+#         "result": result,
+#         "timing_seconds": {
+#             "estimated_real_acquisition_after_resampling": real_acquisition_seconds,
+#             "file_read": round(t1 - t0, 4),
+#             "preprocessing_and_resampling": round(t2 - t1, 4),
+#             "tensor_building": round(t3 - t2, 4),
+#             "inference": round(t4 - t3, 4),
+#             "total_runtime_excluding_acquisition": round(t4 - t0, 4),
+#             "total_runtime_including_acquisition": round(t4 - t0 + real_acquisition_seconds, 4)
+#         }
+#     }
 
 
 @app.get("/map")
