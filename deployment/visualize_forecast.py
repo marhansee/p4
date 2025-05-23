@@ -71,8 +71,8 @@ folium.GeoJson(
 if true_track:
     folium.PolyLine(
         locations=true_track,
-        color="gray",
-        weight=2,
+        color="black",
+        weight=3,
         dash_array="5, 5",
         popup="True AIS trajectory"
     ).add_to(m)
@@ -90,11 +90,16 @@ for i, result in enumerate(results[::-1][::20]):
     }.get(risk_level, "gray")
 
     # Plot forecast path
+    confidence = result.get("fishing_confidence", None)
+    tooltip = f"Forecast window {i + 1}"
+    if confidence is not None:
+        tooltip += f" | Fishing confidence: {round(confidence * 100, 2)}%"
+
     folium.PolyLine(
         locations=[(lat, lon) for lat, lon in forecast],
         color=color,
         weight=4,
-        popup=f"Forecast window {i + 1}"
+        tooltip=tooltip
     ).add_to(m)
 
     # Mark starting point of forecast
