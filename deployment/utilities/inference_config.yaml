@@ -1,4 +1,3 @@
-MMSI: 220334000
 window_size: 30
 step_size: 10
 data_path: "aisdk-2025-03-19_fishing_labeled.csv"

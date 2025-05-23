@@ -1,20 +1,21 @@
 FROM continuumio/miniconda3
 
-# Set working directory
 WORKDIR /app
 
-# Copy environment and code
+# Copy env file early to cache this step
 COPY environment.yml .
-COPY . .
 
-# Create Conda environment
-RUN conda env create -f environment.yml
+# Create environment
+RUN conda env create -f environment.yml && conda clean -afy
 
-# Activate Conda env for all future RUNs and CMDs
+# Use conda shell for all commands
 SHELL ["conda", "run", "-n", "p4-deployment", "/bin/bash", "-c"]
+
+# Copy entire contents of /deployment into container
+COPY . .
 
 # Expose FastAPI port
 EXPOSE 8000
 
-# Run your FastAPI app
+# Start FastAPI server
 CMD ["conda", "run", "--no-capture-output", "-n", "p4-deployment", "uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]

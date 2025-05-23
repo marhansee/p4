@@ -1,4 +1,8 @@
 import numpy as np
+import pandas as pd
+from pydantic import ValidationError, BaseModel
+from typing import List
+
 
 def missing_data_check(df, window_size, mmsi=None, log_fn=print, verbose=False):
     """
@@ -57,3 +61,41 @@ def convert(o):
     if isinstance(o, np.ndarray):
         return o.tolist()
     raise TypeError(f"Object of type {o.__class__.__name__} is not JSON serializable")
+
+class AISDataPoint(BaseModel):
+    Latitude: float
+    Longitude: float
+    ROT: float
+    SOG: float
+    COG: float
+    Heading: float
+    Width: float
+    Length: float
+    Draught: float
+
+def preprocess_input(data: List[AISDataPoint]) -> np.ndarray:
+    features = [
+        [
+            point.Latitude,
+            point.Longitude,
+            point.ROT,
+            point.SOG,
+            point.COG,
+            point.Heading,
+            point.Width,
+            point.Length,
+            point.Draught
+        ]
+        for point in data
+    ]
+    array = np.array(features, dtype=np.float32)
+    return array.reshape(1, len(data), 9)
+
+def validate_csv_rows(df: pd.DataFrame) -> List[AISDataPoint]:
+    validated_rows = []
+    for i, row in df.iterrows():
+        try:
+            validated_rows.append(AISDataPoint(**row.to_dict()))
+        except ValidationError as e:
+            raise ValueError(f"Row {i} failed validation: {e}")
+    return validated_rows

@@ -1,8 +1,12 @@
 import pandas as pd
 import json
+import numpy as np
 
 continuous_cols: list[str] = ["Latitude", "Longitude", "ROT", "SOG", "COG", "Heading", "Draught"]
 static_cols: list[str] = ["Width", "Length", "trawling"]
+
+skewed_positive: list[str] = ["SOG", "Draught"]
+skewed_signed: list[str] = ["ROT"]
 
 # Feature bounds (used for clamping)
 clamp_limits = {
@@ -76,6 +80,25 @@ def resample_to_fixed_interval(df):
 
     return df_resampled.reset_index()
 
+def reduce_skewness(df, skewed_positive=[], skewed_signed=[]):
+    """Automatically log-transform columns with high skewness."""
+    df = df.copy()  # Avoid modifying in-place
+    for col in skewed_positive:
+        skew_val = df[col].skew()
+        if abs(skew_val) > 1:
+            df[col] = np.log1p(df[col])
+
+    for col in skewed_signed:
+        skew_val = df[col].skew()
+        if abs(skew_val) > 1:
+            df[col] = np.where(
+                df[col] >= 0,
+                np.log1p(df[col]),
+                -np.log1p(-df[col])
+            )
+
+    return df
+
 def denormalize_column(values, col_name, norm_stats):
     mean = norm_stats[col_name]["mean"]
     std = norm_stats[col_name]["std"]
@@ -83,14 +106,13 @@ def denormalize_column(values, col_name, norm_stats):
 
 
 
-def preprocess_vessel_df(input_path: str, MMSI: int):
-    df = load_csv(input_path)
+def preprocess_vessel_df(df: pd.DataFrame, MMSI: int, stats_path: str) -> pd.DataFrame:
     df = pick_vessel(df, MMSI)
     df = drop_class_b(df)
     df = filter_relevant_columns(df)
     df = drop_duplicates(df)
     df = resample_to_fixed_interval(df)
-    df = normalize_columns(df, stats_path = "./data/train_norm_stats.json", exclude =["trawling"])
-
-
+    df = reduce_skewness(df)
+    df = normalize_columns(df, stats_path=stats_path, exclude=["trawling"])
     return df
+
