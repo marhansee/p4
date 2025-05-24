@@ -23,7 +23,7 @@ from model_architectures.seq2seq_lstm import Seq2SeqLSTM
 # Load utils
 from utils.train_utils import load_config_file, load_scaler_json, \
     load_data, scale_data, make_sequences
-from utils.data_loader import Forecasting_Dataloader, Classifier_Dataloader2
+from utils.data_loader import System_Dataloader
 from utils.early_stopping import EarlyStopping
 
 warnings.filterwarnings('ignore')
@@ -177,12 +177,12 @@ def main():
                                   seq_len=config['arch_param']['seq_len'], 
                                   group_col='MMSI')
     # Load datasets
-    train_dataset = Classifier_Dataloader2(
+    train_dataset = System_Dataloader(
         X_sequences=X_train,
         y_labels=y_train
     )
 
-    val_dataset = Classifier_Dataloader2(
+    val_dataset = System_Dataloader(
         X_sequences=X_val,
         y_labels=y_val
     )

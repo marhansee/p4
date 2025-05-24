@@ -1,7 +1,6 @@
 import torch
 import torch.onnx
-import os
-import sys
+
 
 
 from model_architectures.cnn_lstm_classifier import CNN_LSTM

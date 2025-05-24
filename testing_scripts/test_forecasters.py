@@ -22,6 +22,20 @@ warnings.filterwarnings('ignore')
 
 
 def inference_onnx(model_path, dataloader, args, device='cpu'):
+    """
+    Runs inference on a dataset using an ONNX model session.
+
+    Args:
+        onnx_session (onnxruntime.InferenceSession): Initialized ONNX runtime session.
+        device (torch.device): Device on which tensors are moved for consistency (e.g., 'cuda' or 'cpu').
+        test_loader (torch.utils.data.DataLoader): DataLoader providing test data batches.
+
+    Returns:
+        all_preds (list): List of predicted labels for the entire test set.
+        all_labels (list): List of true labels for the entire test set.
+        avg_inference_time (float): Average inference time per sample in milliseconds.
+    """
+    
     # Load ONNX model
     providers = ['CUDAExecutionProvider'] if device == 'cuda' else ['CPUExecutionProvider']
     session = ort.InferenceSession(model_path, providers=providers)

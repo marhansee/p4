@@ -26,7 +26,6 @@ class LSTMClassifier(nn.Module):
         self.fc = nn.Linear(hidden_size, hidden_size)  # Output one value (logit) for binary classification
         self.fc2 = nn.Linear(hidden_size, self.num_classes)  # Final output layer
         self.relu = nn.ReLU()
-        #self.norm = nn.LayerNorm(hidden_size)
 
     def forward(self, x):
         batch_size = x.size(0)
@@ -36,7 +35,6 @@ class LSTMClassifier(nn.Module):
         out, _ = self.lstm(x, (h0, c0))  # (batch, seq_len, hidden)
         last_hidden = out[:, -1, :]  # Use the last timestep's hidden state
         out = self.fc(last_hidden)  # (batch, 1)
-       # out = self.norm(out)
         out = self.relu(out)
         out = self.fc2(out)
         return out 

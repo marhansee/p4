@@ -8,7 +8,7 @@ from skl2onnx import convert_sklearn
 from skl2onnx.common.data_types import FloatTensorType
 
 def main():
-       # Make folders for results and snapshots
+    # Make folders for results and snapshots
     results_dir = "results/classification_results/test/RF_AIS_baseline"
     os.makedirs(results_dir, exist_ok=True)
 
