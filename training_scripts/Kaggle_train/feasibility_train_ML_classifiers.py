@@ -1,14 +1,7 @@
 import pandas as pd
 import os
-import numpy as np
-from sklearn.svm import SVC
-from sklearn.linear_model import LogisticRegression
-from sklearn.neighbors import KNeighborsClassifier
-from sklearn.tree import DecisionTreeClassifier
-from sklearn.ensemble import RandomForestClassifier
 from tqdm import tqdm   
-from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score
-from testing_scripts.feasibility_tests.feasibility_utils import evaluate_model, train_all_classifiers
+from testing_scripts.feasibility_tests.feasibility_train_test import evaluate_model, train_all_classifiers
 
 feature_columns = ["signed_turn", "bearing", "time_gap", "distance_gap", "euc_speed", "distanceToShore", "longitude", "latitude"]
 
