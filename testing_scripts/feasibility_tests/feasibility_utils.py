@@ -8,7 +8,7 @@ from sklearn.linear_model import LogisticRegression
 from sklearn.neighbors import KNeighborsClassifier
 from sklearn.tree import DecisionTreeClassifier
 from sklearn.ensemble import RandomForestClassifier, RandomForestRegressor
-from function_house import split_data, measure_inference_time
+from training_scripts.Kaggle_train.feasibility_degradations import split_data, measure_inference_time
 from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score, mean_squared_error, mean_absolute_error
 from sklearn.multioutput import MultiOutputRegressor
 from sklearn.preprocessing import StandardScaler

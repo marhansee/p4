@@ -1,0 +1,23 @@
+lags: False
+horizon: 10
+degradations:
+   apply_irregular_sampling: False
+   apply_downsampling: False
+   apply_resampling: False
+   sampling_interval: 30
+   add_missing_values: True
+   impute_strategy: 'zero'
+   add_duplicates: False
+arch:
+   hidden_size: 64
+   num_layers: 2
+   output_size: 2
+train:
+   seq_length: 10
+   batch_size: 32
+   num_epochs: 50
+   seed: 42
+   lr: 0.0001
+   num_workers: 2
+wandb:
+  project: "P4_baseline"

@@ -7,7 +7,7 @@ from sklearn.impute import SimpleImputer
 from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score
 import time
 import numpy as np
-from function_house import missing_values, duplicates, downsampling
+from training_scripts.Kaggle_train.feasibility_degradations import missing_values, duplicates, downsampling
 
 train_clean = "Split_Train.csv" 
 test_clean = "Split_Validation.csv"

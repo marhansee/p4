@@ -1,0 +1,26 @@
+model_name: 'lstm' # lstm, bigru, 1dcnn, hybrid, s2s_lstm, s2s_bigru
+experiment_name: 'direct_forecast' # name to save as file
+arch_param:
+   n_features: 9 # OBS
+   hidden_size: 32
+   num_layers: 2
+   output_size: 2
+   n_classes: 1
+   output_seq_len: 20 # Obs
+   out_channels: 32
+   seq_len: 30 # 6 = 1 min
+train:
+   batch_size: 3512
+   num_epochs: 50
+   seed: 42
+   lr: 0.001
+   num_workers: 10
+   dropout_prob: 0.2
+scheduler:
+  step_size: 10
+  gamma: 0.1
+wandb:
+  project: "P4_Ablation"
+ddp:
+  set_device: "LOCAL_RANK"
+  process_group: "nccl"
