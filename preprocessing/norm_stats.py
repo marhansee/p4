@@ -4,10 +4,15 @@ import os
 from pyspark.sql import SparkSession, functions as F
 import argparse
 
+
+# Argument parsing
+
 parser = argparse.ArgumentParser(description="Process AIS data with resampling, interpolation, and lag generation.")
 parser.add_argument('--version', type=str, required=True, help="Version name, e.g. v1, v2")
 
 args = parser.parse_args()
+
+# Defining input and output paths
 
 base_input = f"/ceph/project/gatehousep4/data/train_labeled/{args.version}"
 base_output = f"/ceph/project/gatehousep4/data/norm_stats/{args.version}"
