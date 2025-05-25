@@ -11,7 +11,7 @@ from petastorm.unischema import Unischema, UnischemaField
 from petastorm.codecs import ScalarCodec
 from pyspark.sql.types import FloatType, IntegerType, LongType
 
-# ----------------- Command-line args -----------------
+# Command line arguments
 
 parser = argparse.ArgumentParser(description="Convert prod-ready Parquet folders to a single Petastorm dataset.")
 parser.add_argument('--mode', choices=['train', 'test','val'], required=True,
@@ -23,7 +23,7 @@ args = parser.parse_args()
 if not (args.version.startswith('v') and args.version[1:].isdigit()):
     raise ValueError("Invalid --version format. Must be like 'v1', 'v2', etc.")
 
-# ----------------- Paths -----------------
+# Paths based on arguments
 
 if args.mode == 'train':
     input_folder = f"/ceph/project/gatehousep4/data/train_labeled/{args.version}"
@@ -39,7 +39,7 @@ else:
 
 os.makedirs(output_path, exist_ok=True)
 
-# ----------------- Define Unischema -----------------
+# Define Unischema
 
 fields = [
     UnischemaField('timestamp_epoch', np.int64, (), ScalarCodec(LongType()), False),
@@ -61,7 +61,7 @@ for i in range(1, 121):
 
 AISSchema = Unischema('AISSchema', fields)
 
-# ----------------- Spark Session -----------------
+# Init Spark Session
 
 spark = SparkSession.builder \
     .appName(f"Convert to Petastorm ({args.mode}, {args.version})") \
@@ -73,7 +73,7 @@ spark.conf.set(SparkDatasetConverter.PARENT_CACHE_DIR_URL_CONF,
                "file:///ceph/project/gatehousep4/data/petastorm_cache")
 spark.sparkContext.setLogLevel("ERROR")
 
-# ----------------- Load and Combine Input -----------------
+# Load Input
 
 subdirs = [os.path.join(input_folder, d) for d in os.listdir(input_folder)
            if d.endswith("_prod_ready") and os.path.isdir(os.path.join(input_folder, d))]
@@ -95,16 +95,16 @@ if missing:
 
 df = df.select(safe_cols)
 
-# ----------------- Optional: Repartition -----------------
+# Optional: Repartition
 
-df = df.repartition("MMSI")  # Good for distributed training
+df = df.repartition("MMSI")
 
-# ----------------- Write Petastorm Dataset -----------------
+# Write Petastorm Dataset
 
 with materialize_dataset(spark, f"file://{output_path}", AISSchema):
     df.write.mode('overwrite').parquet(f"file://{output_path}")
 
-# ----------------- Write _metadata -----------------
+# Write _metadata
 
 dataset = pq.ParquetDataset(output_path)
 schema = dataset.schema.to_arrow_schema()
