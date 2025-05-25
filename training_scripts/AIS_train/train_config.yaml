@@ -1,12 +1,12 @@
-model_name: 'lstm' # lstm, bigru, 1dcnn, hybrid, s2s_lstm, s2s_bigru
+model_name: 'lstm' # lstm, bigru, 1dcnn, hybrid, s2s_lstm
 experiment_name: 'direct_forecast' # name to save as file
 arch_param:
-   n_features: 9 # OBS
+   n_features: 9 
    hidden_size: 32
    num_layers: 2
    output_size: 2
    n_classes: 1
-   output_seq_len: 20 # Obs
+   output_seq_len: 20 # minutes
    out_channels: 32
    seq_len: 30 # 6 = 1 min
 train:
