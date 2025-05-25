@@ -4,7 +4,7 @@ import json
 import re
 from datetime import datetime
 
-# === LOAD CONFIG ===
+# Load config file
 with open("/ceph/project/gatehousep4/data/configs/data_split_config.json") as f:
     config = json.load(f)
 
@@ -16,7 +16,7 @@ source_dir = config["source_dir"]
 train_base = config["train_base"]
 test_base = config["test_base"]
 
-# === FIND NEXT VERSION ===
+# Determine next version number
 def get_next_version(base_path):
     versions = [d for d in os.listdir(base_path) if re.match(r"v\d+$", d)]
     version_nums = [int(v[1:]) for v in versions]
@@ -25,13 +25,13 @@ def get_next_version(base_path):
 version = get_next_version(train_base)
 print(f"Auto-selected version: {version}")
 
-# === SETUP DESTINATION PATHS ===
+# Set paths
 train_dir = os.path.join(train_base, version)
 test_dir = os.path.join(test_base, version)
 os.makedirs(train_dir, exist_ok=True)
 os.makedirs(test_dir, exist_ok=True)
 
-# === COPY FILES BASED ON DATE ===
+# Copy the defined filesS
 for filename in os.listdir(source_dir):
     if filename.endswith(".csv") and filename.startswith("aisdk"):
         try:
