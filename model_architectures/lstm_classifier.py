@@ -47,7 +47,7 @@ def main():
     model = LSTMClassifier(n_features, hidden_size=64, num_layers=2)
     output = model(dummy_input)
 
-    print("Output shape:", output.shape)  # Expecting (1, 20, 2)
+    print("Output shape:", output.shape)  
 
     flops, params = profile(model, inputs=(dummy_input,))
     print(f"FLOPs: {flops:,}")
