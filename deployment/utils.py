@@ -3,9 +3,6 @@ import os
 import numpy as np
 from utilities.data_validation import convert
 
-
-
-
 def save_results(script_dir, config, results):
     results_path = os.path.join(script_dir, config["results_path"])
 
